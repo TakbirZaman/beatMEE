@@ -1522,44 +1522,7 @@ export default function BeatMEE() {
       updateGS(gs, keysRef.current);
       const { fighters: [f1, f2], particles, announce, phase: gph, tick, timer, round, wins, cdVal, cdFrames, flashFrames } = gs;
       drawBG(ctx, tick, gs);
-      // ── KO RED DANGER EFFECT ──
-      if (gph === "ko") {
-        const p1 = 0.35 + 0.28 * Math.abs(Math.sin(tick * 0.14));
-        const p2 = 0.18 + 0.18 * Math.abs(Math.sin(tick * 0.22 + 1));
-        // Deep blood vignette
-        const vg = ctx.createRadialGradient(CW/2, CH/2, CW*0.18, CW/2, CH/2, CW*0.82);
-        vg.addColorStop(0,   "rgba(0,0,0,0)");
-        vg.addColorStop(0.6, `rgba(120,0,0,${p2})`);
-        vg.addColorStop(1,   `rgba(220,0,0,${p1})`);
-        ctx.fillStyle = vg; ctx.fillRect(0, 0, CW, CH);
-        // Red scanlines overlay
-        ctx.globalAlpha = 0.07;
-        for (let sy = 0; sy < CH; sy += 4) {
-          ctx.fillStyle = "#ff0000"; ctx.fillRect(0, sy, CW, 2);
-        }
-        ctx.globalAlpha = 1;
-        // Pulsing danger border
-        const bw = 6 + 4 * Math.abs(Math.sin(tick * 0.25));
-        ctx.strokeStyle = `rgba(255,0,0,${p1 * 1.8})`; ctx.lineWidth = bw;
-        ctx.strokeRect(bw/2, bw/2, CW-bw, CH-bw);
-        // Corner danger triangles
-        const cs = 28 + 6 * Math.abs(Math.sin(tick * 0.18));
-        ctx.fillStyle = `rgba(255,0,0,${p1})`;
-        [[0,0,1,1],[CW,0,-1,1],[0,CH,1,-1],[CW,CH,-1,-1]].forEach(([cx2,cy2,sx2,sy2]) => {
-          ctx.beginPath(); ctx.moveTo(cx2,cy2);
-          ctx.lineTo(cx2+sx2*cs*2, cy2); ctx.lineTo(cx2, cy2+sy2*cs*2);
-          ctx.closePath(); ctx.fill();
-        });
-        // DANGER text flicker
-        if (tick % 14 < 9) {
-          ctx.save();
-          ctx.font = "bold 11px 'Courier New'"; ctx.textAlign = "center";
-          ctx.fillStyle = `rgba(255,40,40,${p1 * 1.2})`;
-          ctx.shadowColor = "#ff0000"; ctx.shadowBlur = 12;
-          ctx.fillText("⚠ K.O. ⚠", CW/2, CH - 14);
-          ctx.restore();
-        }
-      }
+
       // Screen flash on hit
       if (flashFrames > 0) { ctx.fillStyle = `rgba(255,255,255,${flashFrames * 0.013})`; ctx.fillRect(0, 0, CW, CH); }
       if (gs.shakeFrames > 0) {
