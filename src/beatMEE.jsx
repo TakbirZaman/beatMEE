@@ -12,7 +12,7 @@ const FW = 40, FH = 82;
 
 const ATK = {
   punch:    { dmg: 8,  rng: 72,  dur: 18, kb: 3.5, startup: 4,  active: 7,  stun: 14 },
-  kick:     { dmg: 13, rng: 90,  dur: 26, kb: 6,   startup: 8,  active: 8,  stun: 22 },
+  dash:     { dmg: 18, rng: 100, dur: 28, kb: 8,   startup: 5,  active: 10, stun: 26 },
   special:  { dmg: 22, rng: 115, dur: 40, kb: 11,  startup: 13, active: 10, stun: 34 },
   airpunch: { dmg: 11, rng: 80,  dur: 20, kb: 5,   startup: 4,  active: 8,  stun: 16 },
   airkick:  { dmg: 17, rng: 95,  dur: 28, kb: 8,   startup: 6,  active: 9,  stun: 24 },
@@ -40,7 +40,7 @@ const COMBO_TICKS = 55;
 // ── Single player bindings ──
 const PK = {
   left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp",
-  punch: "KeyA", kick: "KeyS", special: "KeyD", block: "ArrowDown", heavykick: "KeyF",
+  punch: "KeyA", dash: "KeyS",  special: "KeyD", block: "ArrowDown", heavykick: "KeyF",
   altUp: "KeyW", taunt: "KeyT",
 };
 const GAME_KEYS = new Set([
@@ -228,7 +228,7 @@ function updateCPU(gs) {
   // Attack in range
   if (dist < 115 && onGround && Math.random() < adaptedAttack) {
     const roll = Math.random();
-    dec.attack = roll < 0.50 ? "punch" : roll < 0.78 ? "kick" : "special";
+    dec.attack = roll < 0.50 ? "punch" : roll < 0.78 ? "dash" : "special";
     return;
   }
   dec.move    = dist < 60 ? -Math.sign(dx) * (Math.random() < 0.5 ? 1 : 0) : Math.sign(dx) * (Math.random() < 0.7 ? 1 : 0);
@@ -291,7 +291,7 @@ function updatePlayer(f, keys) {
   }
 
   const pL = keys.has(PK.left), pR = keys.has(PK.right), pU = keys.has(PK.up) || keys.has(PK.altUp);
-  const pP = keys.has(PK.punch), pK = keys.has(PK.kick), pS = keys.has(PK.special), pB = keys.has(PK.block);
+  const pP = keys.has(PK.punch), pK = keys.has(PK.dash), pS = keys.has(PK.special), pB = keys.has(PK.block);
 
   if (pB && onGround && !pP && !pK && !pS) { f.state = "block"; f.vx *= 0.6; applyPhysics(f); return; }
 
@@ -328,7 +328,7 @@ function updatePlayer(f, keys) {
   const pHK = keys.has(PK.heavykick);
   if      (f.state !== "attack" && pS && onGround) doAttack(f, "special");
   else if (f.state !== "attack" && pHK && onGround) doAttack(f, "heavykick");
-  else if (f.state !== "attack" && pK && onGround) doAttack(f, "kick");
+  else if (f.state !== "attack" && pK && onGround) doAttack(f, "dash");
   else if (f.state !== "attack" && pP && onGround) doAttack(f, "punch");
 
   if (f.state === "attack") { f.vx *= 0.6; applyPhysics(f); return; }
@@ -473,11 +473,19 @@ function testHit(gs, atk, def) {
   // ── Cinematic KO check ──
   if (def.hp <= 0 && !gs.cinematicKO) {
     gs.cinematicKO       = true;
-    gs.cinematicKOTimer  = 30;
-    gs.slowMotionFrames  = 28;
-    gs.shakeFrames       = 14;
-    gs.shakeIntensity    = 8;
-    gs.particles.push(...mkParticles(def.x, def.y - FH*0.5, pc, 22));
+    gs.cinematicKOTimer  = 40;
+    gs.slowMotionFrames  = 32;
+    gs.shakeFrames       = 18;
+    gs.shakeIntensity    = 10;
+    // Big particle burst
+    gs.particles.push(...mkParticles(def.x, def.y - FH*0.5, pc, 28));
+    gs.particles.push(...mkParticles(def.x, def.y - FH*0.5, "#ffffff", 8));
+    // Expanding shockwave rings
+    if (!gs.koRings) gs.koRings = [];
+    gs.koRings.push({ x: def.x, y: GROUND, r: 0, maxR: 130, life: 1, col: pc });
+    gs.koRings.push({ x: def.x, y: GROUND, r: 0, maxR: 80,  life: 1, col: "#ffffff", delay: 8 });
+    // Announce
+    gs.announce = { text: "K.O.!", sub: `${atk.name} WINS!`, ttl: 9999 };
   }
 }
 
@@ -658,6 +666,14 @@ function tickParticles(gs) {
       .map(r => ({ ...r, y: r.y - 0.4, life: r.life - r.decay }))
       .filter(r => r.life > 0)
       .slice(-4);
+  }
+  if (gs.koRings) {
+    gs.koRings = gs.koRings
+      .map(r => {
+        if (r.delay > 0) return { ...r, delay: r.delay - 1 };
+        return { ...r, r: r.r + 7, life: r.life - 0.045 };
+      })
+      .filter(r => r.life > 0);
   }
   gs.fighters.forEach(f => { if (f.personalityTimer > 0) f.personalityTimer--; });
 }
@@ -1081,7 +1097,7 @@ function drawFighter(ctx, f, tick) {
       }
 
     // ── KICK: big boot sweep ──────────────────────────────────
-    } else if (attackType === "kick") {
+    } else if (attackType === "dash") {
       const reach = swing * 54;
       const atkY  = y - FH * 0.22;
       ctx.strokeStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 22;
@@ -1422,7 +1438,7 @@ function TouchControls({ keysRef }) {
             <span style={{ textAlign: "center", lineHeight: 1.2 }}>PUN<br/>CH</span>
           </div>
           <div style={atk("255,160,0", 50)} {...mkHandlers("KeyS")}>
-            <span style={{ textAlign: "center", lineHeight: 1.2 }}>KI<br/>CK</span>
+            <span style={{ textAlign: "center", lineHeight: 1.2 }}>DA<br/>SH</span>
           </div>
           <div style={atk("255,60,180", 50)} {...mkHandlers("KeyF")}>
             <span style={{ textAlign: "center", lineHeight: 1.2 }}>HVY<br/>KCK</span>
@@ -1553,6 +1569,18 @@ export default function BeatMEE() {
       drawFighter(ctx, f1, tick); drawFighter(ctx, f2, tick);
       if (gs.shakeFrames > 0) ctx.restore();
       drawParticles(ctx, particles);
+      // ── KO shockwave rings ──
+      if (gs.koRings) {
+        gs.koRings.forEach(ring => {
+          if (ring.delay > 0) return;
+          ctx.save();
+          ctx.beginPath(); ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2);
+          ctx.strokeStyle = ring.col; ctx.globalAlpha = ring.life * 0.7;
+          ctx.lineWidth = 4 * ring.life; ctx.shadowColor = ring.col; ctx.shadowBlur = 20;
+          ctx.stroke();
+          ctx.restore();
+        });
+      }
       // ── Crowd reaction floating texts ──
       if (gs.crowdReactions) {
         gs.crowdReactions.forEach(r => {
@@ -1652,158 +1680,129 @@ export default function BeatMEE() {
         {uiPhase === "enter_name" && (
           <div style={overlay}>
 
-            {/* ── TITLE ── */}
-            <div style={{ textAlign: "center" }}>
-              <div style={{
-                fontSize: "clamp(32px, 9vw, 62px)", fontWeight: "bold", color: "#fff",
-                letterSpacing: "clamp(4px, 2vw, 14px)",
-                textShadow: "0 0 30px #ff0000, 0 0 60px #ff00ff, 0 0 100px #00ffff",
-                lineHeight: 1,
-              }}>BEAT ME</div>
-              <div style={{ fontSize: "clamp(9px,2vw,12px)", color: "#ff4433", letterSpacing: 8, marginTop: 6, fontWeight: "bold" }}>
+            {/* TITLE */}
+            <div style={{ textAlign:"center", lineHeight:1 }}>
+              <div style={{ fontSize:"clamp(22px,8vw,48px)", fontWeight:"bold", color:"#fff",
+                letterSpacing:"clamp(3px,2vw,12px)",
+                textShadow:"0 0 20px #ff0000, 0 0 50px #ff00ff, 0 0 80px #00ffff" }}>
+                BEAT ME
+              </div>
+              <div style={{ fontSize:"clamp(7px,1.8vw,10px)", color:"#ff4433", letterSpacing:6, marginTop:4, fontWeight:"bold" }}>
                 1 PLAYER · VS · CPU
               </div>
             </div>
 
-            {/* ── WIN STREAK BADGE ── */}
             {winStreak >= 2 && (
-              <div style={{ textAlign: "center", padding: "6px 18px",
-                background: "rgba(255,200,0,0.1)", border: "1px solid rgba(255,200,0,0.4)",
-                borderRadius: 4, fontSize: 10, color: "#ffcc00", letterSpacing: 3, fontWeight: "bold",
-                textShadow: "0 0 10px #ffaa00", boxShadow: "0 0 14px rgba(255,180,0,0.2)" }}>
+              <div style={{ textAlign:"center", padding:"3px 12px",
+                background:"rgba(255,200,0,0.1)", border:"1px solid rgba(255,200,0,0.35)",
+                borderRadius:4, fontSize:9, color:"#ffcc00", letterSpacing:3, fontWeight:"bold" }}>
                 🔥 WIN STREAK × {winStreak}
               </div>
             )}
 
-            {/* ── NAME INPUT BLOCK ── */}
-            <div style={{ width: "100%", maxWidth: 420, boxSizing: "border-box" }}>
-              <div style={{ fontSize: 10, color: playerColor2, letterSpacing: 5, fontWeight: "bold", marginBottom: 8, textShadow: `0 0 8px ${playerColor2}` }}>
+            {/* NAME + COLOR row */}
+            <div style={{ width:"100%", maxWidth:400, boxSizing:"border-box" }}>
+              <div style={{ fontSize:8, color:playerColor2, letterSpacing:4, fontWeight:"bold", marginBottom:5, textShadow:`0 0 6px ${playerColor2}` }}>
                 ▸ YOUR FIGHTER NAME
               </div>
               <input
-                type="text"
-                maxLength={12}
-                value={playerName}
+                type="text" maxLength={12} value={playerName}
                 onChange={e => { setPlayerName(e.target.value); setNameError(""); }}
                 onKeyDown={e => e.key === "Enter" && handleStart()}
-                onFocus={() => setFocused(true)}
-                onBlur={() => setFocused(false)}
-                placeholder="TYPE YOUR NAME"
-                autoFocus
+                onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+                placeholder="TYPE YOUR NAME" autoFocus
                 style={{
-                  display: "block", width: "100%", boxSizing: "border-box",
+                  display:"block", width:"100%", boxSizing:"border-box",
                   background: focused ? `${playerColor2}18` : `${playerColor2}09`,
-                  border: `2px solid ${focused ? playerColor2 : playerColor2 + "55"}`,
-                  color: "#fff", fontSize: "clamp(16px,5vw,24px)", fontFamily: F,
-                  fontWeight: "bold", letterSpacing: 6, textAlign: "center",
-                  padding: "14px 12px", outline: "none", textTransform: "uppercase",
-                  boxShadow: focused ? `0 0 28px ${playerColor2}44` : "none",
-                  transition: "all 0.15s", borderRadius: 4,
+                  border:`2px solid ${focused ? playerColor2 : playerColor2+"44"}`,
+                  color:"#fff", fontSize:"clamp(14px,4.5vw,20px)", fontFamily:F,
+                  fontWeight:"bold", letterSpacing:5, textAlign:"center",
+                  padding:"10px 10px", outline:"none", textTransform:"uppercase",
+                  boxShadow: focused ? `0 0 20px ${playerColor2}44` : "none",
+                  transition:"all 0.15s", borderRadius:4,
                 }}
               />
               {nameError
-                ? <div style={{ color: "#ff4444", fontSize: 11, letterSpacing: 2, marginTop: 7, textAlign: "center", fontWeight: "bold" }}>⚠ {nameError}</div>
-                : <div style={{ color: "#224455", fontSize: 9, letterSpacing: 3, marginTop: 7, textAlign: "center" }}>{playerName.trim().length} / 12 CHARS</div>
+                ? <div style={{ color:"#ff4444", fontSize:9, letterSpacing:2, marginTop:4, textAlign:"center", fontWeight:"bold" }}>⚠ {nameError}</div>
+                : <div style={{ color:"#224455", fontSize:8, letterSpacing:2, marginTop:4, textAlign:"center" }}>{playerName.trim().length}/12</div>
               }
-
-              {/* ── FIGHTER COLOR PICKER ── */}
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 9, color: "#446655", letterSpacing: 4, fontWeight: "bold", marginBottom: 8 }}>◈ FIGHTER COLOR</div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {[
-                    ["#00e5ff","CYAN"],["#ff4040","RED"],["#44ff88","GREEN"],
-                    ["#ff00ff","PINK"],["#ffdd00","GOLD"],["#ff8800","ORANGE"],
-                    ["#aa88ff","PURPLE"],["#ffffff","WHITE"],
-                  ].map(([col, name]) => (
-                    <button key={col} onClick={() => setPlayerColor2(col)} title={name} style={{
-                      width: 30, height: 30, borderRadius: "50%", border: playerColor2 === col ? `3px solid #fff` : `2px solid ${col}55`,
-                      background: col, cursor: "pointer", outline: "none",
-                      boxShadow: playerColor2 === col ? `0 0 14px ${col}, 0 0 28px ${col}66` : "none",
-                      transform: playerColor2 === col ? "scale(1.25)" : "scale(1)",
-                      transition: "all 0.15s",
-                    }} />
-                  ))}
-                </div>
+              {/* Color swatches inline */}
+              <div style={{ display:"flex", gap:6, marginTop:8, flexWrap:"wrap" }}>
+                {[["#00e5ff","CYAN"],["#ff4040","RED"],["#44ff88","GREEN"],["#ff00ff","PINK"],["#ffdd00","GOLD"],["#ff8800","ORANGE"],["#aa88ff","PURPLE"],["#ffffff","WHITE"]].map(([col,name]) => (
+                  <button key={col} onClick={() => setPlayerColor2(col)} title={name} style={{
+                    width:22, height:22, borderRadius:"50%",
+                    border: playerColor2===col ? "2px solid #fff" : `2px solid ${col}55`,
+                    background:col, cursor:"pointer", outline:"none",
+                    boxShadow: playerColor2===col ? `0 0 10px ${col}` : "none",
+                    transform: playerColor2===col ? "scale(1.2)" : "scale(1)",
+                    transition:"all 0.12s", flexShrink:0,
+                  }}/>
+                ))}
               </div>
             </div>
 
-            {/* ── LEVEL SELECT ── */}
-            <div style={{ width: "100%", maxWidth: 420, boxSizing: "border-box" }}>
-              <div style={{ fontSize: 10, color: "#ff4422", letterSpacing: 5, fontWeight: "bold", marginBottom: 10, textShadow: "0 0 8px #ff2200" }}>
+            {/* LEVEL SELECT */}
+            <div style={{ width:"100%", maxWidth:400, boxSizing:"border-box" }}>
+              <div style={{ fontSize:8, color:"#ff4422", letterSpacing:4, fontWeight:"bold", marginBottom:6, textShadow:"0 0 6px #ff2200" }}>
                 ◈ SELECT LEVEL
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display:"flex", gap:5 }}>
                 {[
-                  { d: "easy",      num: "1", label: "MEDIUM",    dc: "#44dd44", desc: "Normal",     icon: "🟢" },
-                  { d: "semipro",   num: "2", label: "SEMI PRO",  dc: "#ffcc00", desc: "Moderate",   icon: "🟡" },
-                  { d: "pro",       num: "3", label: "PRO",       dc: "#ff7700", desc: "Challenging", icon: "🟠" },
-                  { d: "legendary", num: "4", label: "LEGENDARY", dc: "#ff0044", desc: "Good Luck",   icon: "🔴" },
+                  { d:"easy",      num:"1", label:"MEDIUM",    dc:"#44dd44", desc:"Normal",     icon:"🟢" },
+                  { d:"semipro",   num:"2", label:"SEMI PRO",  dc:"#ffcc00", desc:"Moderate",   icon:"🟡" },
+                  { d:"pro",       num:"3", label:"PRO",       dc:"#ff7700", desc:"Hard",        icon:"🟠" },
+                  { d:"legendary", num:"4", label:"LEGEND",    dc:"#ff0044", desc:"Good Luck",   icon:"🔴" },
                 ].map(({ d, num, label, dc, desc, icon }) => {
                   const sel = difficulty === d;
+                  const bgMap = { easy:"0,160,0", semipro:"160,130,0", pro:"160,70,0", legendary:"160,0,35" };
                   return (
                     <button key={d} onClick={() => setDifficulty(d)} style={{
-                      flex: 1, display: "flex", flexDirection: "column",
-                      alignItems: "center", justifyContent: "center",
-                      gap: 4, padding: "12px 4px 10px",
-                      background: sel ? `rgba(${d==="easy"?"0,180,0":d==="semipro"?"180,140,0":d==="pro"?"180,80,0":"180,0,40"},0.18)` : "rgba(20,5,5,0.5)",
-                      border: `2px solid ${sel ? dc : "rgba(80,20,10,0.35)"}`,
-                      borderRadius: 6, cursor: "pointer", outline: "none",
-                      boxShadow: sel ? `0 0 20px ${dc}55, inset 0 0 12px ${dc}11` : "none",
-                      transform: sel ? "scale(1.04)" : "scale(1)",
-                      transition: "all 0.15s",
+                      flex:1, display:"flex", flexDirection:"column",
+                      alignItems:"center", justifyContent:"center",
+                      gap:2, padding:"8px 2px 7px",
+                      background: sel ? `rgba(${bgMap[d]},0.2)` : "rgba(15,4,4,0.55)",
+                      border:`2px solid ${sel ? dc : "rgba(70,18,8,0.35)"}`,
+                      borderRadius:5, cursor:"pointer", outline:"none",
+                      boxShadow: sel ? `0 0 16px ${dc}44` : "none",
+                      transform: sel ? "scale(1.05)" : "scale(1)",
+                      transition:"all 0.13s",
                     }}>
-                      {/* Number badge */}
-                      <span style={{
-                        fontSize: "clamp(20px,5vw,30px)", fontWeight: "bold", lineHeight: 1,
+                      <span style={{ fontSize:"clamp(16px,4.5vw,24px)", fontWeight:"bold", lineHeight:1,
                         color: sel ? dc : "#442211",
-                        textShadow: sel ? `0 0 14px ${dc}` : "none",
-                        fontFamily: F,
-                      }}>{num}</span>
-                      {/* Icon */}
-                      <span style={{ fontSize: "clamp(10px,3vw,15px)", lineHeight: 1 }}>{icon}</span>
-                      {/* Label */}
-                      <span style={{
-                        fontSize: "clamp(6px,1.6vw,9px)", letterSpacing: 1,
-                        fontWeight: "bold", color: sel ? dc : "#553322",
-                        fontFamily: F, textTransform: "uppercase",
-                        opacity: sel ? 1 : 0.55,
-                      }}>{label}</span>
-                      {/* Desc — only on selected */}
-                      {sel && (
-                        <span style={{ fontSize: "clamp(5px,1.3vw,8px)", color: dc, opacity: 0.75, fontFamily: F, letterSpacing: 1 }}>
-                          {desc}
-                        </span>
-                      )}
+                        textShadow: sel ? `0 0 12px ${dc}` : "none",
+                        fontFamily:F }}>{num}</span>
+                      <span style={{ fontSize:"clamp(8px,2vw,10px)", lineHeight:1.1 }}>{icon}</span>
+                      <span style={{ fontSize:"clamp(5px,1.4vw,7px)", letterSpacing:0.5, fontWeight:"bold",
+                        color: sel ? dc : "#553322", fontFamily:F, textTransform:"uppercase",
+                        opacity: sel ? 1 : 0.5 }}>{label}</span>
+                      {sel && <span style={{ fontSize:"clamp(4px,1.1vw,6px)", color:dc, opacity:0.7, fontFamily:F }}>{desc}</span>}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* ── FIGHT BUTTON ── */}
+            {/* FIGHT BUTTON */}
             <button
               style={{
-                width: "100%", maxWidth: 420, boxSizing: "border-box",
-                padding: "16px 0",
-                background: "rgba(255,20,10,0.14)",
-                border: "2px solid #ff3322",
-                color: "#ff6655", fontSize: "clamp(12px,4vw,16px)",
-                fontFamily: F, fontWeight: "bold", letterSpacing: "clamp(3px,1.5vw,8px)",
-                cursor: "pointer", textTransform: "uppercase",
-                boxShadow: "0 0 24px rgba(255,20,10,0.35)",
-                textShadow: "0 0 10px #ff2200",
-                outline: "none", borderRadius: 4, transition: "all 0.15s",
+                width:"100%", maxWidth:400, boxSizing:"border-box",
+                padding:"13px 0",
+                background:"rgba(255,20,10,0.14)", border:"2px solid #ff3322",
+                color:"#ff6655", fontSize:"clamp(11px,3.5vw,15px)",
+                fontFamily:F, fontWeight:"bold", letterSpacing:"clamp(3px,1.5vw,7px)",
+                cursor:"pointer", textTransform:"uppercase",
+                boxShadow:"0 0 20px rgba(255,20,10,0.32)",
+                textShadow:"0 0 8px #ff2200",
+                outline:"none", borderRadius:4, transition:"all 0.15s",
               }}
-              onMouseOver={e => { e.currentTarget.style.background="rgba(255,20,10,0.26)"; e.currentTarget.style.boxShadow="0 0 44px rgba(255,20,10,0.6)"; }}
-              onMouseOut={e  => { e.currentTarget.style.background="rgba(255,20,10,0.14)"; e.currentTarget.style.boxShadow="0 0 24px rgba(255,20,10,0.35)"; }}
+              onMouseOver={e => { e.currentTarget.style.background="rgba(255,20,10,0.26)"; e.currentTarget.style.boxShadow="0 0 40px rgba(255,20,10,0.6)"; }}
+              onMouseOut={e  => { e.currentTarget.style.background="rgba(255,20,10,0.14)"; e.currentTarget.style.boxShadow="0 0 20px rgba(255,20,10,0.32)"; }}
               onClick={handleStart}
-            >
-              ▶ FIGHT !
-            </button>
+            >▶ FIGHT !</button>
 
-            {/* ── CONTROLS HINT ── */}
-            <div style={{ width: "100%", maxWidth: 420, fontSize: 9, color: "#223344", letterSpacing: 2, lineHeight: 2, textAlign: "center" }}>
-              ← → MOVE · ↑ JUMP · ↓ BLOCK · A PUNCH · S KICK · F HEAVY KICK · D SPECIAL · ↑+D SUPER · T TAUNT
+            {/* Controls hint */}
+            <div style={{ width:"100%", maxWidth:400, fontSize:"clamp(6px,1.5vw,8px)", color:"#1a2233", letterSpacing:1.5, lineHeight:1.9, textAlign:"center" }}>
+              A PUNCH · S DASH · F HEAVY KICK · D SPECIAL · ↑+D SUPER · T TAUNT
             </div>
 
           </div>
