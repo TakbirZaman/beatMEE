@@ -16,6 +16,7 @@ const ATK = {
   special:  { dmg: 22, rng: 115, dur: 40, kb: 11,  startup: 13, active: 10, stun: 34 },
   airpunch: { dmg: 11, rng: 80,  dur: 20, kb: 5,   startup: 4,  active: 8,  stun: 16 },
   airkick:  { dmg: 17, rng: 95,  dur: 28, kb: 8,   startup: 6,  active: 9,  stun: 24 },
+  heavykick: { dmg: 28, rng: 105, dur: 38, kb: 12,  startup: 14, active: 8,  stun: 32 },
   super:    { dmg: 45, rng: 130, dur: 55, kb: 16,  startup: 18, active: 12, stun: 45 },
   finisher: { dmg: 70, rng: 140, dur: 65, kb: 22,  startup: 22, active: 14, stun: 60 },
 };
@@ -39,12 +40,12 @@ const COMBO_TICKS = 55;
 // ── Single player bindings ──
 const PK = {
   left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp",
-  punch: "KeyA", kick: "KeyS", special: "KeyD", block: "ArrowDown",
+  punch: "KeyA", kick: "KeyS", special: "KeyD", block: "ArrowDown", heavykick: "KeyF",
   altUp: "KeyW", taunt: "KeyT",
 };
 const GAME_KEYS = new Set([
   "ArrowLeft","ArrowRight","ArrowUp","ArrowDown",
-  "KeyA","KeyS","KeyD","KeyW","KeyT",
+  "KeyA","KeyS","KeyD","KeyW","KeyT","KeyF",
 ]);
 
 // ═══════════════════════════════════════════════════════════════
@@ -324,7 +325,9 @@ function updatePlayer(f, keys) {
   }
 
   // ── Ground attacks ──
+  const pHK = keys.has(PK.heavykick);
   if      (f.state !== "attack" && pS && onGround) doAttack(f, "special");
+  else if (f.state !== "attack" && pHK && onGround) doAttack(f, "heavykick");
   else if (f.state !== "attack" && pK && onGround) doAttack(f, "kick");
   else if (f.state !== "attack" && pP && onGround) doAttack(f, "punch");
 
@@ -1061,6 +1064,22 @@ function drawFighter(ctx, f, tick) {
 
       ctx.restore();
 
+    // ── HEAVY KICK: rising heel slam ────────────────────────
+    } else if (attackType === "heavykick") {
+      const reach = swing * 72;
+      const atkY  = fy - FH * 0.55 - swing * 22;
+      ctx.strokeStyle = color; ctx.lineWidth = 13; ctx.shadowColor = color; ctx.shadowBlur = 28;
+      ctx.beginPath(); ctx.moveTo(x + dir * FW * 0.28, fy - FH * 0.28);
+      ctx.quadraticCurveTo(x + dir * (FW * 0.5 + reach * 0.4), fy - FH * 0.45, x + dir * (FW * 0.36 + reach), atkY); ctx.stroke();
+      // Boot tip glow
+      ctx.beginPath(); ctx.arc(x + dir * (FW * 0.36 + reach), atkY, 13, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.shadowBlur = 30; ctx.fill();
+      // Energy trail
+      if (swing > 0.3) {
+        ctx.beginPath(); ctx.arc(x + dir * (FW * 0.36 + reach), atkY, 22, 0, Math.PI * 2);
+        ctx.strokeStyle = rgba(color, 0.25); ctx.lineWidth = 6; ctx.shadowBlur = 18; ctx.stroke();
+      }
+
     // ── KICK: big boot sweep ──────────────────────────────────
     } else if (attackType === "kick") {
       const reach = swing * 54;
@@ -1393,17 +1412,20 @@ function TouchControls({ keysRef }) {
       </div>
 
       {/* ── RIGHT: ATTACK BUTTONS ── */}
-      <div style={{ pointerEvents: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+      <div style={{ pointerEvents: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
         {/* Special on top */}
         <div style={atk("255,0,255", 50)} {...mkHandlers("KeyD")}>
           <span style={{ textAlign: "center", lineHeight: 1.2 }}>SPE<br/>CIAL</span>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 5 }}>
           <div style={atk("0,229,255", 50)} {...mkHandlers("KeyA")}>
             <span style={{ textAlign: "center", lineHeight: 1.2 }}>PUN<br/>CH</span>
           </div>
           <div style={atk("255,160,0", 50)} {...mkHandlers("KeyS")}>
             <span style={{ textAlign: "center", lineHeight: 1.2 }}>KI<br/>CK</span>
+          </div>
+          <div style={atk("255,60,180", 50)} {...mkHandlers("KeyF")}>
+            <span style={{ textAlign: "center", lineHeight: 1.2 }}>HVY<br/>KCK</span>
           </div>
         </div>
         {/* SUPER — triggers ↑+D simultaneously */}
@@ -1712,10 +1734,10 @@ export default function BeatMEE() {
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 {[
-                  { d: "easy",      num: "1", label: "EASY",      dc: "#44dd44", desc: "Beginner",   icon: "🟢" },
+                  { d: "easy",      num: "1", label: "MEDIUM",    dc: "#44dd44", desc: "Normal",     icon: "🟢" },
                   { d: "semipro",   num: "2", label: "SEMI PRO",  dc: "#ffcc00", desc: "Moderate",   icon: "🟡" },
                   { d: "pro",       num: "3", label: "PRO",       dc: "#ff7700", desc: "Challenging", icon: "🟠" },
-                  { d: "legendary", num: "4", label: "LEGENDARY", dc: "#ff0044", desc: "Insane",      icon: "🔴" },
+                  { d: "legendary", num: "4", label: "LEGENDARY", dc: "#ff0044", desc: "Good Luck",   icon: "🔴" },
                 ].map(({ d, num, label, dc, desc, icon }) => {
                   const sel = difficulty === d;
                   return (
@@ -1781,7 +1803,7 @@ export default function BeatMEE() {
 
             {/* ── CONTROLS HINT ── */}
             <div style={{ width: "100%", maxWidth: 420, fontSize: 9, color: "#223344", letterSpacing: 2, lineHeight: 2, textAlign: "center" }}>
-              ← → MOVE · ↑/W JUMP · ↓ BLOCK · A PUNCH · S KICK · D SPECIAL · ↑+D SUPER · T TAUNT
+              ← → MOVE · ↑ JUMP · ↓ BLOCK · A PUNCH · S KICK · F HEAVY KICK · D SPECIAL · ↑+D SUPER · T TAUNT
             </div>
 
           </div>
