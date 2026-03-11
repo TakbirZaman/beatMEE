@@ -118,14 +118,15 @@ function mkParticles(x, y, color, n = 14) {
 // ═══════════════════════════════════════════════════════════════
 // GAME STATE
 // ═══════════════════════════════════════════════════════════════
-function initGS(playerName, difficulty = "medium") {
+function initGS(playerName, difficulty = "medium", playerColor = "#00e5ff") {
+  const pGlow = playerColor;
   return {
     phase: "menu",
     tick: 0, timer: ROUND_TIME, timerFrames: 0,
     round: 1, wins: [0, 0],
     fighters: [
-      mkFighter(170, 1,  "#00e5ff", "#00e5ff", playerName || "PLAYER"),
-      mkFighter(630, -1, "#ff4040", "#ff4040", "CPU"),
+      mkFighter(170, 1,  playerColor, pGlow, playerName || "PLAYER"),
+      mkFighter(630, -1, "#ff4040",   "#ff4040", "CPU"),
     ],
     particles: [], announce: null,
     cdFrames: 0, cdVal: 3,
@@ -148,7 +149,8 @@ function initGS(playerName, difficulty = "medium") {
 
 function beginRound(gs) {
   const pName = gs.fighters[0].name;
-  gs.fighters    = [mkFighter(170, 1, "#00e5ff", "#00e5ff", pName), mkFighter(630, -1, "#ff4040", "#ff4040", "CPU")];
+  const pCol = gs.fighters[0]?.color || "#00e5ff";
+  gs.fighters    = [mkFighter(170, 1, pCol, pCol, pName), mkFighter(630, -1, "#ff4040", "#ff4040", "CPU")];
   gs.timer       = ROUND_TIME; gs.timerFrames = 0;
   gs.particles   = []; gs.cdVal = 3; gs.cdFrames = 180;
   gs.phase       = "countdown"; gs.announce = null;
@@ -1419,6 +1421,9 @@ export default function BeatMEE() {
   const [difficulty, setDifficulty] = useState("easy");
   const [results,    setResults]    = useState(null);
   const [focused,    setFocused]    = useState(false);
+  const [winStreak,  setWinStreak]  = useState(0);
+  const [matchHistory, setMatchHistory] = useState([]);
+  const [playerColor2, setPlayerColor2] = useState("#00e5ff");
 
   // Idle BG animation on non-game screens
   useEffect(() => {
@@ -1526,7 +1531,11 @@ export default function BeatMEE() {
       if (announce) drawAnnounce(ctx, announce.text, announce.sub, tick);
       if (gph === "results" && !gs.resultsTriggered) {
         gs.resultsTriggered = true;
-        setResults({ winner: gs.wins[0] >= WINS_NEEDED ? f1.name : "CPU", wins: [...gs.wins], playerName: f1.name });
+        const winner = gs.wins[0] >= WINS_NEEDED ? f1.name : "CPU";
+        const diff2  = gs.difficulty;
+        setResults({ winner, wins: [...gs.wins], playerName: f1.name, difficulty: diff2 });
+        setWinStreak(prev => winner !== "CPU" ? prev + 1 : 0);
+        setMatchHistory(prev => [...prev.slice(-4), { winner, diff: diff2, wins: [...gs.wins] }]);
         setUiPhase("results");
       }
       rafRef.current = requestAnimationFrame(loop);
@@ -1541,7 +1550,7 @@ export default function BeatMEE() {
     if (!name)          { setNameError("Enter your fighter name first!"); return; }
     if (name.length > 12) { setNameError("Maximum 12 characters."); return; }
     setNameError("");
-    const gs = initGS(name.toUpperCase(), difficulty);
+    const gs = initGS(name.toUpperCase(), difficulty, playerColor2);
     gs.resultsTriggered = false;
     gsRef.current = gs;
     beginRound(gs);
@@ -1550,7 +1559,7 @@ export default function BeatMEE() {
 
   function handleRematch() {
     const name = gsRef.current?.fighters[0]?.name || playerName.trim().toUpperCase();
-    const gs = initGS(name, difficulty);
+    const gs = initGS(name, difficulty, playerColor2);
     gs.resultsTriggered = false;
     gsRef.current = gs;
     beginRound(gs);
@@ -1610,9 +1619,19 @@ export default function BeatMEE() {
               </div>
             </div>
 
+            {/* ── WIN STREAK BADGE ── */}
+            {winStreak >= 2 && (
+              <div style={{ textAlign: "center", padding: "6px 18px",
+                background: "rgba(255,200,0,0.1)", border: "1px solid rgba(255,200,0,0.4)",
+                borderRadius: 4, fontSize: 10, color: "#ffcc00", letterSpacing: 3, fontWeight: "bold",
+                textShadow: "0 0 10px #ffaa00", boxShadow: "0 0 14px rgba(255,180,0,0.2)" }}>
+                🔥 WIN STREAK × {winStreak}
+              </div>
+            )}
+
             {/* ── NAME INPUT BLOCK ── */}
             <div style={{ width: "100%", maxWidth: 420, boxSizing: "border-box" }}>
-              <div style={{ fontSize: 10, color: "#00e5ff", letterSpacing: 5, fontWeight: "bold", marginBottom: 8, textShadow: "0 0 8px #00e5ff" }}>
+              <div style={{ fontSize: 10, color: playerColor2, letterSpacing: 5, fontWeight: "bold", marginBottom: 8, textShadow: `0 0 8px ${playerColor2}` }}>
                 ▸ YOUR FIGHTER NAME
               </div>
               <input
@@ -1627,12 +1646,12 @@ export default function BeatMEE() {
                 autoFocus
                 style={{
                   display: "block", width: "100%", boxSizing: "border-box",
-                  background: focused ? "rgba(0,229,255,0.12)" : "rgba(0,229,255,0.05)",
-                  border: `2px solid ${focused ? "#00e5ff" : "rgba(0,229,255,0.35)"}`,
+                  background: focused ? `${playerColor2}18` : `${playerColor2}09`,
+                  border: `2px solid ${focused ? playerColor2 : playerColor2 + "55"}`,
                   color: "#fff", fontSize: "clamp(16px,5vw,24px)", fontFamily: F,
                   fontWeight: "bold", letterSpacing: 6, textAlign: "center",
                   padding: "14px 12px", outline: "none", textTransform: "uppercase",
-                  boxShadow: focused ? "0 0 28px rgba(0,229,255,0.4)" : "none",
+                  boxShadow: focused ? `0 0 28px ${playerColor2}44` : "none",
                   transition: "all 0.15s", borderRadius: 4,
                 }}
               />
@@ -1640,6 +1659,26 @@ export default function BeatMEE() {
                 ? <div style={{ color: "#ff4444", fontSize: 11, letterSpacing: 2, marginTop: 7, textAlign: "center", fontWeight: "bold" }}>⚠ {nameError}</div>
                 : <div style={{ color: "#224455", fontSize: 9, letterSpacing: 3, marginTop: 7, textAlign: "center" }}>{playerName.trim().length} / 12 CHARS</div>
               }
+
+              {/* ── FIGHTER COLOR PICKER ── */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 9, color: "#446655", letterSpacing: 4, fontWeight: "bold", marginBottom: 8 }}>◈ FIGHTER COLOR</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    ["#00e5ff","CYAN"],["#ff4040","RED"],["#44ff88","GREEN"],
+                    ["#ff00ff","PINK"],["#ffdd00","GOLD"],["#ff8800","ORANGE"],
+                    ["#aa88ff","PURPLE"],["#ffffff","WHITE"],
+                  ].map(([col, name]) => (
+                    <button key={col} onClick={() => setPlayerColor2(col)} title={name} style={{
+                      width: 30, height: 30, borderRadius: "50%", border: playerColor2 === col ? `3px solid #fff` : `2px solid ${col}55`,
+                      background: col, cursor: "pointer", outline: "none",
+                      boxShadow: playerColor2 === col ? `0 0 14px ${col}, 0 0 28px ${col}66` : "none",
+                      transform: playerColor2 === col ? "scale(1.25)" : "scale(1)",
+                      transition: "all 0.15s",
+                    }} />
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* ── LEVEL SELECT ── */}
@@ -1727,56 +1766,94 @@ export default function BeatMEE() {
         {/* ─────────── RESULTS ─────────── */}
         {uiPhase === "results" && results && (
           <div style={overlay}>
-            <div style={{ fontSize: 9, color: "#222244", letterSpacing: 10 }}>MATCH COMPLETE</div>
+            {/* Header */}
+            <div style={{ fontSize: "clamp(7px,2vw,10px)", color: "#333355", letterSpacing: 8, textTransform: "uppercase" }}>
+              ── MATCH COMPLETE ──
+            </div>
 
-            <div style={{ fontSize: "clamp(28px, 7vw, 50px)", fontWeight: "bold", color: "#fff", letterSpacing: 5,
-                          textShadow: results.winner === "CPU"
-                            ? `0 0 30px ${cpuColor}, 0 0 70px #ff0000`
-                            : `0 0 30px ${playerColor}, 0 0 70px #ff00ff` }}>
-              {results.winner}
+            {/* Winner banner */}
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "clamp(10px,3vw,13px)", color: results.winner === "CPU" ? cpuColor : playerColor2,
+                            letterSpacing: 6, fontWeight: "bold", marginBottom: 4, opacity: 0.7 }}>
+                {results.winner === "CPU" ? "😈 DEFEATED" : "🏆 WINNER"}
+              </div>
+              <div style={{ fontSize: "clamp(30px,8vw,54px)", fontWeight: "bold", color: "#fff", letterSpacing: 4,
+                            textShadow: results.winner === "CPU"
+                              ? `0 0 30px ${cpuColor}, 0 0 60px #ff0000`
+                              : `0 0 30px ${playerColor2}, 0 0 60px ${playerColor2}` }}>
+                {results.winner === "CPU" ? "CPU" : results.playerName}
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: "#6666aa", letterSpacing: 6, marginTop: -6 }}>
-              WINS THE MATCH
-            </div>
+
+            {/* Win streak */}
+            {results.winner !== "CPU" && winStreak >= 2 && (
+              <div style={{ padding: "6px 20px", background: "rgba(255,200,0,0.12)",
+                border: "1px solid rgba(255,200,0,0.5)", borderRadius: 4,
+                fontSize: 11, color: "#ffcc00", letterSpacing: 3, fontWeight: "bold",
+                textShadow: "0 0 10px #ffaa00" }}>
+                🔥 {winStreak} WIN STREAK!
+              </div>
+            )}
 
             {/* Score card */}
-            <div style={{ display: "flex", gap: 0, border: "1px solid rgba(255,255,255,0.07)", overflow: "hidden", marginTop: 8 }}>
-              <div style={{ padding: "14px 28px", textAlign: "center", background: "rgba(0,229,255,0.06)",
-                            borderRight: "1px solid rgba(255,255,255,0.07)" }}>
-                <div style={{ fontSize: 9, color: "#336677", letterSpacing: 3, marginBottom: 8 }}>{results.playerName}</div>
-                <div style={{ fontSize: 46, fontWeight: "bold", color: playerColor, textShadow: `0 0 18px ${playerColor}` }}>
+            <div style={{ display: "flex", width: "100%", maxWidth: 340, border: "1px solid rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden" }}>
+              <div style={{ flex: 1, padding: "14px 10px", textAlign: "center", background: "rgba(0,200,255,0.06)" }}>
+                <div style={{ fontSize: 8, color: "#336677", letterSpacing: 2, marginBottom: 6 }}>{results.playerName}</div>
+                <div style={{ fontSize: "clamp(36px,10vw,52px)", fontWeight: "bold", color: playerColor2, textShadow: `0 0 16px ${playerColor2}` }}>
                   {results.wins[0]}
                 </div>
               </div>
-              <div style={{ padding: "18px 24px", display: "flex", alignItems: "center" }}>
-                <span style={{ color: "#181830", fontSize: 16, fontWeight: "bold" }}>VS</span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 14px", background: "rgba(0,0,0,0.2)" }}>
+                <span style={{ color: "#333355", fontSize: 14, fontWeight: "bold" }}>VS</span>
+                <span style={{ color: "#222233", fontSize: 8, letterSpacing: 1, marginTop: 4 }}>
+                  {["easy","semipro","pro","legendary"].indexOf(results.difficulty)+1} ·{" "}
+                  {results.difficulty.toUpperCase()}
+                </span>
               </div>
-              <div style={{ padding: "14px 28px", textAlign: "center", background: "rgba(255,64,64,0.06)",
-                            borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
-                <div style={{ fontSize: 9, color: "#663333", letterSpacing: 3, marginBottom: 8 }}>CPU</div>
-                <div style={{ fontSize: 46, fontWeight: "bold", color: cpuColor, textShadow: `0 0 18px ${cpuColor}` }}>
+              <div style={{ flex: 1, padding: "14px 10px", textAlign: "center", background: "rgba(255,40,40,0.06)" }}>
+                <div style={{ fontSize: 8, color: "#663333", letterSpacing: 2, marginBottom: 6 }}>CPU</div>
+                <div style={{ fontSize: "clamp(36px,10vw,52px)", fontWeight: "bold", color: cpuColor, textShadow: `0 0 16px ${cpuColor}` }}>
                   {results.wins[1]}
                 </div>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+            {/* Match history */}
+            {matchHistory.length >= 2 && (
+              <div style={{ width: "100%", maxWidth: 340 }}>
+                <div style={{ fontSize: 8, color: "#222244", letterSpacing: 4, marginBottom: 6 }}>RECENT MATCHES</div>
+                <div style={{ display: "flex", gap: 5 }}>
+                  {matchHistory.map((m, i) => (
+                    <div key={i} style={{
+                      flex: 1, textAlign: "center", padding: "5px 2px",
+                      background: m.winner !== "CPU" ? "rgba(0,200,100,0.1)" : "rgba(255,40,40,0.1)",
+                      border: `1px solid ${m.winner !== "CPU" ? "rgba(0,200,100,0.3)" : "rgba(255,40,40,0.3)"}`,
+                      borderRadius: 3,
+                    }}>
+                      <div style={{ fontSize: 9, fontWeight: "bold", color: m.winner !== "CPU" ? "#44ff88" : "#ff4444" }}>
+                        {m.winner !== "CPU" ? "WIN" : "LOSS"}
+                      </div>
+                      <div style={{ fontSize: 7, color: "#333355", marginTop: 2 }}>{m.wins[0]}-{m.wins[1]}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div style={{ display: "flex", gap: 10, width: "100%", maxWidth: 340 }}>
               <button
-                style={neonBtn(playerColor)}
-                onMouseOver={e => { e.currentTarget.style.boxShadow = `0 0 32px ${playerColor}88`; e.currentTarget.style.background = "rgba(0,229,255,0.07)"; }}
-                onMouseOut={e  => { e.currentTarget.style.boxShadow = `0 0 16px ${playerColor}44`; e.currentTarget.style.background = "transparent"; }}
+                style={{ ...neonBtn(playerColor2), flex: 1, padding: "12px 0", fontSize: 12, letterSpacing: 4 }}
+                onMouseOver={e => { e.currentTarget.style.background = `${playerColor2}14`; }}
+                onMouseOut={e  => { e.currentTarget.style.background = "transparent"; }}
                 onClick={handleRematch}
-              >
-                REMATCH
-              </button>
+              >⚔ REMATCH</button>
               <button
-                style={neonBtn("#444466")}
-                onMouseOver={e => { e.currentTarget.style.boxShadow = "0 0 32px #44446688"; e.currentTarget.style.background = "rgba(68,68,102,0.07)"; }}
-                onMouseOut={e  => { e.currentTarget.style.boxShadow = "0 0 16px #44446644"; e.currentTarget.style.background = "transparent"; }}
+                style={{ ...neonBtn("#334455"), flex: 1, padding: "12px 0", fontSize: 12, letterSpacing: 3 }}
+                onMouseOver={e => { e.currentTarget.style.background = "rgba(50,60,80,0.12)"; }}
+                onMouseOut={e  => { e.currentTarget.style.background = "transparent"; }}
                 onClick={() => { setResults(null); setUiPhase("enter_name"); }}
-              >
-                CHANGE NAME
-              </button>
+              >✎ MENU</button>
             </div>
           </div>
         )}
