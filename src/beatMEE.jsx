@@ -1326,18 +1326,18 @@ function TouchControls({ keysRef }) {
 
   const dpad = (label, key, extraStyle = {}) => ({
     ...base,
-    width: 52, height: 52,
+    width: btnSz, height: btnSz,
     background: "rgba(0,229,255,0.08)",
     border: "2px solid rgba(0,229,255,0.3)",
     color: "rgba(0,229,255,0.7)",
-    fontSize: 18,
+    fontSize: Math.max(13, btnSz * 0.35),
     boxShadow: "0 0 10px rgba(0,229,255,0.1)",
     ...extraStyle,
   });
 
   const atk = (color, size = 54) => ({
     ...base,
-    width: size, height: size,
+    width: Math.min(size, btnSz + 2), height: Math.min(size, btnSz + 2),
     background: `rgba(${color},0.1)`,
     border: `2px solid rgba(${color},0.5)`,
     color: `rgba(${color},0.9)`,
@@ -1345,11 +1345,12 @@ function TouchControls({ keysRef }) {
     boxShadow: `0 0 12px rgba(${color},0.2)`,
   });
 
+  const btnSz = Math.min(52, Math.floor(window.innerWidth / 9));
   return (
     <div style={{
       position: "absolute", bottom: 0, left: 0, right: 0,
       display: "flex", justifyContent: "space-between", alignItems: "flex-end",
-      padding: "0 12px 10px",
+      padding: `0 ${Math.max(6, Math.floor(window.innerWidth * 0.015))}px 8px`,
       pointerEvents: "none",
     }}>
       {/* ── LEFT: D-PAD ── */}
@@ -1565,9 +1566,10 @@ export default function BeatMEE() {
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start",
     background: "#02020a",
     overflowY: "auto", overflowX: "hidden",
-    padding: "20px 16px 30px",
-    gap: 12, fontFamily: F,
+    padding: "clamp(12px, 3vw, 24px) clamp(10px, 4vw, 20px) 30px",
+    gap: "clamp(8px, 2vw, 14px)", fontFamily: F,
     WebkitOverflowScrolling: "touch",
+    boxSizing: "border-box",
   };
 
   const neonBtn = (col) => ({
@@ -1583,11 +1585,13 @@ export default function BeatMEE() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                  minHeight: "100vh", background: "#02020a", fontFamily: F }}>
-      <div style={{ position: "relative", width: CW, maxWidth: "100%", aspectRatio: "16/9" }}>
+                  minHeight: "100vh", minHeight: "100dvh", background: "#02020a", fontFamily: F,
+                  padding: 0, margin: 0, boxSizing: "border-box", overflow: "hidden" }}>
+      <div style={{ position: "relative", width: "100%", maxWidth: `${CW}px`,
+                    aspectRatio: "16/9", flexShrink: 0 }}>
 
         <canvas ref={canvasRef} width={CW} height={CH}
-                style={{ display: "block", width: "100%", height: "auto" }} />
+                style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
 
         {/* ─────────── NAME ENTRY ─────────── */}
         {uiPhase === "enter_name" && (
@@ -1596,7 +1600,7 @@ export default function BeatMEE() {
             {/* ── TITLE ── */}
             <div style={{ textAlign: "center", marginBottom: 2 }}>
               <div style={{
-                fontSize: "clamp(28px, 8vw, 52px)", fontWeight: "bold", color: "#fff", letterSpacing: "clamp(4px, 2vw, 12px)",
+                fontSize: "clamp(22px, 7vw, 52px)", fontWeight: "bold", color: "#fff", letterSpacing: "clamp(3px, 1.5vw, 12px)",
                 textShadow: "0 0 30px #ff0000, 0 0 60px #ff00ff, 0 0 100px #00ffff",
                 lineHeight: 1,
               }}>
@@ -1770,24 +1774,31 @@ export default function BeatMEE() {
                   }}>
                     DIFFICULTY
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
                     {[
-                      ["easy",      "#55aa55", "🟢 EASY"],
-                      ["semipro",   "#ddaa00", "🟡 SEMI PRO"],
-                      ["pro",       "#ff6600", "🟠 PRO"],
-                      ["legendary", "#ff0044", "🔴 LEGENDARY"],
-                    ].map(([d, dc, label]) => (
+                      ["easy",      "#55cc55", "1", "EASY"],
+                      ["semipro",   "#ddcc00", "2", "SEMI PRO"],
+                      ["pro",       "#ff6600", "3", "PRO"],
+                      ["legendary", "#ff0044", "4", "LEGENDARY"],
+                    ].map(([d, dc, num, label]) => (
                       <button key={d} onClick={() => setDifficulty(d)} style={{
-                        flex: "1 1 45%", padding: "8px 4px",
-                        background: difficulty === d ? `rgba(255,40,20,0.28)` : "rgba(120,20,10,0.10)",
-                        border: `2px solid ${difficulty === d ? dc : "rgba(180,40,20,0.2)"}`,
-                        color: difficulty === d ? dc : "#664433",
-                        fontSize: 9, fontFamily: F, fontWeight: "bold", letterSpacing: 1,
-                        cursor: "pointer", textTransform: "uppercase",
-                        boxShadow: difficulty === d ? `0 0 14px ${dc}88` : "none",
-                        textShadow: difficulty === d ? `0 0 8px ${dc}` : "none",
+                        flex: 1,
+                        display: "flex", flexDirection: "column",
+                        alignItems: "center", justifyContent: "center",
+                        padding: "10px 4px 8px",
+                        background: difficulty === d ? `rgba(255,40,20,0.22)` : "rgba(60,10,5,0.18)",
+                        border: `2px solid ${difficulty === d ? dc : "rgba(100,20,10,0.3)"}`,
+                        color: difficulty === d ? dc : "#553322",
+                        fontFamily: F, fontWeight: "bold",
+                        cursor: "pointer",
+                        boxShadow: difficulty === d ? `0 0 16px ${dc}66` : "none",
                         transition: "all 0.15s", outline: "none",
-                      }}>{label}</button>
+                        borderRadius: 4,
+                      }}>
+                        <span style={{ fontSize: 22, lineHeight: 1, textShadow: difficulty === d ? `0 0 10px ${dc}` : "none" }}>{num}</span>
+                        <span style={{ fontSize: 7, letterSpacing: 1, marginTop: 4, textTransform: "uppercase",
+                                       opacity: difficulty === d ? 1 : 0.5 }}>{label}</span>
+                      </button>
                     ))}
                   </div>
                 </div>
