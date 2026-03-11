@@ -1598,234 +1598,129 @@ export default function BeatMEE() {
           <div style={overlay}>
 
             {/* ── TITLE ── */}
-            <div style={{ textAlign: "center", marginBottom: 2 }}>
+            <div style={{ textAlign: "center" }}>
               <div style={{
-                fontSize: "clamp(22px, 7vw, 52px)", fontWeight: "bold", color: "#fff", letterSpacing: "clamp(3px, 1.5vw, 12px)",
+                fontSize: "clamp(32px, 9vw, 62px)", fontWeight: "bold", color: "#fff",
+                letterSpacing: "clamp(4px, 2vw, 14px)",
                 textShadow: "0 0 30px #ff0000, 0 0 60px #ff00ff, 0 0 100px #00ffff",
                 lineHeight: 1,
-              }}>
-                BEAT ME
-              </div>
-              <div style={{
-                fontSize: 13, color: "#ff6655", letterSpacing: 10, marginTop: 8,
-                fontWeight: "bold", textShadow: "0 0 12px #ff3300",
-              }}>
-                1 PLAYER  VS  CPU
+              }}>BEAT ME</div>
+              <div style={{ fontSize: "clamp(9px,2vw,12px)", color: "#ff4433", letterSpacing: 8, marginTop: 6, fontWeight: "bold" }}>
+                1 PLAYER · VS · CPU
               </div>
             </div>
 
-            {/* ── MAIN CARD ── */}
-            <div style={{
-              display: "flex", flexDirection: "column", alignItems: "stretch", gap: 0, marginTop: 8,
-              border: "1px solid rgba(255,60,60,0.3)",
-              boxShadow: "0 0 40px rgba(255,0,0,0.08)",
-              overflow: "hidden", width: "100%", maxWidth: 480,
-            }}>
-
-              {/* ── PLAYER SIDE ── */}
-              <div style={{
-                padding: "18px 20px",
-                background: "rgba(0,229,255,0.06)",
-                borderBottom: "1px solid rgba(255,60,60,0.2)",
-              }}>
-                {/* Section label */}
-                <div style={{
-                  fontSize: 11, color: "#00e5ff", letterSpacing: 6,
-                  fontWeight: "bold", marginBottom: 12,
-                  textShadow: "0 0 10px #00e5ff",
-                }}>
-                  ▸ YOUR FIGHTER
-                </div>
-
-                {/* Name input */}
-                <input
-                  type="text"
-                  maxLength={12}
-                  value={playerName}
-                  onChange={e => { setPlayerName(e.target.value); setNameError(""); }}
-                  onKeyDown={e => e.key === "Enter" && handleStart()}
-                  onFocus={() => setFocused(true)}
-                  onBlur={() => setFocused(false)}
-                  placeholder="TYPE YOUR NAME"
-                  autoFocus
-                  style={{
-                    display: "block", width: "100%", boxSizing: "border-box",
-                    background: focused ? "rgba(0,229,255,0.12)" : "rgba(0,229,255,0.05)",
-                    border: `2px solid ${focused ? "#00e5ff" : "rgba(0,229,255,0.4)"}`,
-                    color: "#ffffff", fontSize: 22, fontFamily: F,
-                    fontWeight: "bold", letterSpacing: 6, textAlign: "center",
-                    padding: "13px 14px", outline: "none", textTransform: "uppercase",
-                    boxShadow: focused ? "0 0 28px rgba(0,229,255,0.45)" : "0 0 8px rgba(0,229,255,0.1)",
-                    transition: "all 0.15s",
-                  }}
-                />
-                {nameError
-                  ? <div style={{ color: "#ff4444", fontSize: 11, letterSpacing: 2, marginTop: 8, textAlign: "center", fontWeight: "bold" }}>⚠ {nameError}</div>
-                  : <div style={{ color: "#336688", fontSize: 10, letterSpacing: 3, marginTop: 8, textAlign: "center" }}>{playerName.trim().length} / 12 CHARS</div>
-                }
-
-                {/* ── CONTROLS TABLE ── */}
-                <div style={{ marginTop: 16 }}>
-                  <div style={{
-                    fontSize: 10, color: "#cc3322", letterSpacing: 5,
-                    fontWeight: "bold", marginBottom: 10,
-                    textShadow: "0 0 8px #ff2200",
-                  }}>
-                    CONTROLS
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {[
-                      ["← →",    "MOVE"],
-                      ["↑ / W",  "JUMP"],
-                      ["↓",      "BLOCK"],
-                      ["A",      "PUNCH"],
-                      ["S",      "KICK"],
-                      ["D",      "SPECIAL"],
-                      ["↑ + D",  "SUPER ★"],
-                    ].map(([k, v]) => (
-                      <div key={k} style={{
-                        display: "flex", alignItems: "center",
-                        justifyContent: "space-between", gap: 10,
-                      }}>
-                        {/* Key badge */}
-                        <span style={{
-                          display: "inline-block",
-                          minWidth: 52, textAlign: "center",
-                          padding: "4px 8px",
-                          background: "rgba(200,30,20,0.25)",
-                          border: "1px solid rgba(255,80,60,0.7)",
-                          color: "#ff6655",
-                          fontSize: 12, fontWeight: "bold", letterSpacing: 2,
-                          boxShadow: "0 0 8px rgba(255,40,20,0.35)",
-                          textShadow: "0 0 6px #ff3300",
-                        }}>
-                          {k}
-                        </span>
-                        {/* Action label */}
-                        <span style={{
-                          color: "#ccccee", fontSize: 11,
-                          fontWeight: "bold", letterSpacing: 3,
-                          textAlign: "right", flex: 1,
-                        }}>
-                          {v}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+            {/* ── NAME INPUT BLOCK ── */}
+            <div style={{ width: "100%", maxWidth: 420, boxSizing: "border-box" }}>
+              <div style={{ fontSize: 10, color: "#00e5ff", letterSpacing: 5, fontWeight: "bold", marginBottom: 8, textShadow: "0 0 8px #00e5ff" }}>
+                ▸ YOUR FIGHTER NAME
               </div>
+              <input
+                type="text"
+                maxLength={12}
+                value={playerName}
+                onChange={e => { setPlayerName(e.target.value); setNameError(""); }}
+                onKeyDown={e => e.key === "Enter" && handleStart()}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder="TYPE YOUR NAME"
+                autoFocus
+                style={{
+                  display: "block", width: "100%", boxSizing: "border-box",
+                  background: focused ? "rgba(0,229,255,0.12)" : "rgba(0,229,255,0.05)",
+                  border: `2px solid ${focused ? "#00e5ff" : "rgba(0,229,255,0.35)"}`,
+                  color: "#fff", fontSize: "clamp(16px,5vw,24px)", fontFamily: F,
+                  fontWeight: "bold", letterSpacing: 6, textAlign: "center",
+                  padding: "14px 12px", outline: "none", textTransform: "uppercase",
+                  boxShadow: focused ? "0 0 28px rgba(0,229,255,0.4)" : "none",
+                  transition: "all 0.15s", borderRadius: 4,
+                }}
+              />
+              {nameError
+                ? <div style={{ color: "#ff4444", fontSize: 11, letterSpacing: 2, marginTop: 7, textAlign: "center", fontWeight: "bold" }}>⚠ {nameError}</div>
+                : <div style={{ color: "#224455", fontSize: 9, letterSpacing: 3, marginTop: 7, textAlign: "center" }}>{playerName.trim().length} / 12 CHARS</div>
+              }
+            </div>
 
-              {/* ── DIVIDER ── */}
-              <div style={{
-                padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "center",
-                background: "rgba(255,0,0,0.03)",
-              }}>
-                <span style={{
-                  color: "#ff3322", fontSize: 26, fontWeight: "bold",
-                  textShadow: "0 0 14px #ff0000",
-                }}>VS</span>
+            {/* ── LEVEL SELECT ── */}
+            <div style={{ width: "100%", maxWidth: 420, boxSizing: "border-box" }}>
+              <div style={{ fontSize: 10, color: "#ff4422", letterSpacing: 5, fontWeight: "bold", marginBottom: 10, textShadow: "0 0 8px #ff2200" }}>
+                ◈ SELECT LEVEL
               </div>
-
-              {/* ── CPU SIDE ── */}
-              <div style={{
-                padding: "18px 20px",
-                background: "rgba(255,40,40,0.05)",
-                borderTop: "1px solid rgba(255,60,60,0.2)",
-              }}>
-                <div style={{
-                  fontSize: 11, color: "#ff4040", letterSpacing: 6,
-                  fontWeight: "bold", marginBottom: 12,
-                  textShadow: "0 0 10px #ff2200",
-                }}>
-                  ◂ OPPONENT
-                </div>
-                <div style={{
-                  fontSize: 42, fontWeight: "bold", color: "#ff4040",
-                  textShadow: "0 0 28px #ff0000, 0 0 55px #ff0000",
-                  letterSpacing: 8, lineHeight: 1,
-                }}>
-                  CPU
-                </div>
-                <div style={{
-                  marginTop: 12, fontSize: 10, color: "#882222",
-                  lineHeight: 2, letterSpacing: 2, fontWeight: "bold",
-                }}>
-                  ADAPTIVE AI<br/>BLOCKS · COMBOS<br/>COUNTER-ATTACKS
-                </div>
-
-                {/* Match info */}
-                <div style={{
-                  marginTop: 14, padding: "8px 12px",
-                  background: "rgba(255,40,40,0.1)",
-                  border: "1px solid rgba(255,60,60,0.3)",
-                  fontSize: 10, color: "#aa4433",
-                  letterSpacing: 2, lineHeight: 1.9, fontWeight: "bold",
-                }}>
-                  BEST OF {WINS_NEEDED * 2 - 1} ROUNDS<br/>
-                  60 SEC TIMER
-                </div>
-
-                {/* ── DIFFICULTY ── */}
-                <div style={{ marginTop: 14 }}>
-                  <div style={{
-                    fontSize: 10, color: "#cc3322", letterSpacing: 4,
-                    fontWeight: "bold", marginBottom: 8,
-                    textShadow: "0 0 6px #ff2200",
-                  }}>
-                    DIFFICULTY
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {[
-                      ["easy",      "#55cc55", "1", "EASY"],
-                      ["semipro",   "#ddcc00", "2", "SEMI PRO"],
-                      ["pro",       "#ff6600", "3", "PRO"],
-                      ["legendary", "#ff0044", "4", "LEGENDARY"],
-                    ].map(([d, dc, num, label]) => (
-                      <button key={d} onClick={() => setDifficulty(d)} style={{
-                        flex: 1,
-                        display: "flex", flexDirection: "column",
-                        alignItems: "center", justifyContent: "center",
-                        padding: "10px 4px 8px",
-                        background: difficulty === d ? `rgba(255,40,20,0.22)` : "rgba(60,10,5,0.18)",
-                        border: `2px solid ${difficulty === d ? dc : "rgba(100,20,10,0.3)"}`,
-                        color: difficulty === d ? dc : "#553322",
-                        fontFamily: F, fontWeight: "bold",
-                        cursor: "pointer",
-                        boxShadow: difficulty === d ? `0 0 16px ${dc}66` : "none",
-                        transition: "all 0.15s", outline: "none",
-                        borderRadius: 4,
-                      }}>
-                        <span style={{ fontSize: 22, lineHeight: 1, textShadow: difficulty === d ? `0 0 10px ${dc}` : "none" }}>{num}</span>
-                        <span style={{ fontSize: 7, letterSpacing: 1, marginTop: 4, textTransform: "uppercase",
-                                       opacity: difficulty === d ? 1 : 0.5 }}>{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[
+                  { d: "easy",      num: "1", label: "EASY",      dc: "#44dd44", desc: "Beginner",   icon: "🟢" },
+                  { d: "semipro",   num: "2", label: "SEMI PRO",  dc: "#ffcc00", desc: "Moderate",   icon: "🟡" },
+                  { d: "pro",       num: "3", label: "PRO",       dc: "#ff7700", desc: "Challenging", icon: "🟠" },
+                  { d: "legendary", num: "4", label: "LEGENDARY", dc: "#ff0044", desc: "Insane",      icon: "🔴" },
+                ].map(({ d, num, label, dc, desc, icon }) => {
+                  const sel = difficulty === d;
+                  return (
+                    <button key={d} onClick={() => setDifficulty(d)} style={{
+                      flex: 1, display: "flex", flexDirection: "column",
+                      alignItems: "center", justifyContent: "center",
+                      gap: 4, padding: "12px 4px 10px",
+                      background: sel ? `rgba(${d==="easy"?"0,180,0":d==="semipro"?"180,140,0":d==="pro"?"180,80,0":"180,0,40"},0.18)` : "rgba(20,5,5,0.5)",
+                      border: `2px solid ${sel ? dc : "rgba(80,20,10,0.35)"}`,
+                      borderRadius: 6, cursor: "pointer", outline: "none",
+                      boxShadow: sel ? `0 0 20px ${dc}55, inset 0 0 12px ${dc}11` : "none",
+                      transform: sel ? "scale(1.04)" : "scale(1)",
+                      transition: "all 0.15s",
+                    }}>
+                      {/* Number badge */}
+                      <span style={{
+                        fontSize: "clamp(20px,5vw,30px)", fontWeight: "bold", lineHeight: 1,
+                        color: sel ? dc : "#442211",
+                        textShadow: sel ? `0 0 14px ${dc}` : "none",
+                        fontFamily: F,
+                      }}>{num}</span>
+                      {/* Icon */}
+                      <span style={{ fontSize: "clamp(10px,3vw,15px)", lineHeight: 1 }}>{icon}</span>
+                      {/* Label */}
+                      <span style={{
+                        fontSize: "clamp(6px,1.6vw,9px)", letterSpacing: 1,
+                        fontWeight: "bold", color: sel ? dc : "#553322",
+                        fontFamily: F, textTransform: "uppercase",
+                        opacity: sel ? 1 : 0.55,
+                      }}>{label}</span>
+                      {/* Desc — only on selected */}
+                      {sel && (
+                        <span style={{ fontSize: "clamp(5px,1.3vw,8px)", color: dc, opacity: 0.75, fontFamily: F, letterSpacing: 1 }}>
+                          {desc}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* ── ENTER BUTTON ── */}
+            {/* ── FIGHT BUTTON ── */}
             <button
               style={{
-                marginTop: 4,
-                padding: "15px 40px",
-                width: "100%", maxWidth: 380, boxSizing: "border-box",
-                background: "rgba(255,30,20,0.12)",
+                width: "100%", maxWidth: 420, boxSizing: "border-box",
+                padding: "16px 0",
+                background: "rgba(255,20,10,0.14)",
                 border: "2px solid #ff3322",
-                color: "#ff6655", fontSize: 15,
-                fontFamily: F, fontWeight: "bold", letterSpacing: 6,
+                color: "#ff6655", fontSize: "clamp(12px,4vw,16px)",
+                fontFamily: F, fontWeight: "bold", letterSpacing: "clamp(3px,1.5vw,8px)",
                 cursor: "pointer", textTransform: "uppercase",
-                boxShadow: "0 0 22px rgba(255,30,20,0.4)",
+                boxShadow: "0 0 24px rgba(255,20,10,0.35)",
                 textShadow: "0 0 10px #ff2200",
-                outline: "none", transition: "all 0.15s",
+                outline: "none", borderRadius: 4, transition: "all 0.15s",
               }}
-              onMouseOver={e => { e.currentTarget.style.boxShadow = "0 0 44px rgba(255,30,20,0.75)"; e.currentTarget.style.background = "rgba(255,30,20,0.22)"; }}
-              onMouseOut={e  => { e.currentTarget.style.boxShadow = "0 0 22px rgba(255,30,20,0.4)";  e.currentTarget.style.background = "rgba(255,30,20,0.12)"; }}
+              onMouseOver={e => { e.currentTarget.style.background="rgba(255,20,10,0.26)"; e.currentTarget.style.boxShadow="0 0 44px rgba(255,20,10,0.6)"; }}
+              onMouseOut={e  => { e.currentTarget.style.background="rgba(255,20,10,0.14)"; e.currentTarget.style.boxShadow="0 0 24px rgba(255,20,10,0.35)"; }}
               onClick={handleStart}
             >
-              ▶ ENTER THE ARENA
+              ▶ FIGHT !
             </button>
+
+            {/* ── CONTROLS HINT ── */}
+            <div style={{ width: "100%", maxWidth: 420, fontSize: 9, color: "#223344", letterSpacing: 2, lineHeight: 2, textAlign: "center" }}>
+              ← → MOVE · ↑/W JUMP · ↓ BLOCK · A PUNCH · S KICK · D SPECIAL · ↑+D SUPER · T TAUNT
+            </div>
+
           </div>
         )}
 
