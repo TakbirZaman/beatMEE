@@ -40,16 +40,21 @@ const COMBO_TICKS = 55;
 const PK = {
   left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp",
   punch: "KeyA", kick: "KeyS", special: "KeyD", block: "ArrowDown",
-  altUp: "KeyW", // W also works as jump
+  altUp: "KeyW", taunt: "KeyT",
 };
 const GAME_KEYS = new Set([
   "ArrowLeft","ArrowRight","ArrowUp","ArrowDown",
-  "KeyA","KeyS","KeyD","KeyW",
+  "KeyA","KeyS","KeyD","KeyW","KeyT",
 ]);
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
+const CROWD_MSGS = ["OOOH!", "WHAT A HIT!", "INCREDIBLE!", "LET'S GO!", "WOAH!", "BEAST MODE!", "NO WAY!!", "GET UP!"];
+const TAUNT_MSGS = ["Too slow!", "Is that all?", "Try harder!", "You're done!", "Come on!", "Pathetic!", "Fear me!", "You call that a punch?"];
+const BLOCK_MSGS = ["Blocked!", "Nice try!", "Can't touch me!", "Read that!"];
+const COMBO_MSGS = ["BOOM!", "Keep going!", "Don't stop!", "Unstoppable!"];
+
 function rgba(hex, a) {
   const n = parseInt(hex.replace("#", ""), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
@@ -93,6 +98,11 @@ function mkFighter(startX, facing, color, glow, name) {
     stunFrames: 0,
     dmgNumbers: [],
     finisherReady: false,
+    tauntTimer: 0,
+    tauntCooldown: 0,
+    lastDodge: -999,
+    personality: null,
+    personalityTimer: 0,
   };
 }
 
@@ -132,6 +142,7 @@ function initGS(playerName, difficulty = "medium") {
     playerBehavior: { punchCount: 0, blockCount: 0, jumpCount: 0, lastActionTick: 0 },
     cpuDecision: { move: 0, blocking: false, jumping: false, attack: null },
     cpuThinkCd: 0,
+    crowdReactions: [],
   };
 }
 
@@ -150,6 +161,7 @@ function beginRound(gs) {
   gs.playerBehavior = { punchCount: 0, blockCount: 0, jumpCount: 0, lastActionTick: 0 };
   gs.cpuDecision = { move: 0, blocking: false, jumping: false, attack: null };
   gs.cpuThinkCd  = 0;
+  gs.crowdReactions = [];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -277,6 +289,15 @@ function updatePlayer(f, keys) {
   // ── Finisher: ↑ + A + D when enemy HP < 10 and meter full ──
   // (triggered via gs in updateGS, not here directly)
 
+  // ── Taunt: T key ──
+  if (keys.has(PK.taunt) && f.state === "idle" && f.tauntCooldown <= 0) {
+    f.tauntTimer = 40; f.tauntCooldown = 180;
+    f.personality = TAUNT_MSGS[Math.floor(Math.random() * TAUNT_MSGS.length)];
+    f.personalityTimer = 80;
+  }
+  if (f.tauntCooldown > 0) f.tauntCooldown--;
+  if (f.tauntTimer > 0) { f.tauntTimer--; f.state = "idle"; f.vx = 0; applyPhysics(f); return; }
+
   // ── Super Move: ↑ + Special while meter is full ──
   if (pU && pS && f.superMeter >= SUPER_MAX && onGround) {
     f.state = "attack"; f.attackType = "super";
@@ -323,9 +344,30 @@ function testHit(gs, atk, def) {
   if (atk.state !== "attack" || !atk.hitActive || atk.hitDone || def.state === "ko") return;
   const a = ATK[atk.attackType];
   const dx = def.x - atk.x;
-  if (Math.abs(dx) >= a.rng || (Math.sign(dx) !== atk.facing && Math.abs(dx) >= FW * 0.6)) return;
+  const missed = Math.abs(dx) >= a.rng || (Math.sign(dx) !== atk.facing && Math.abs(dx) >= FW * 0.6);
+  // Near-miss slow motion: within 90% of range but still missed
+  if (missed) {
+    if (Math.abs(dx) < a.rng * 1.18 && Math.abs(dx) >= a.rng && gs.slowMotionFrames <= 0 && Math.random() < 0.45) {
+      gs.slowMotionFrames = 14;
+    }
+    return;
+  }
   atk.hitDone = true;
   const hx = (atk.x + def.x) / 2, hy = def.y - FH * 0.6;
+
+  // ── Last-second dodge (5% chance when HP < 20) ──
+  if (def.hp <= 20 && def.hp > 0 && Math.random() < 0.07 && gs.tick - def.lastDodge > 90) {
+    def.lastDodge = gs.tick;
+    def.vx = -def.facing * 7;
+    gs.announce = { text: "DODGED!", sub: null, ttl: 40 };
+    gs.particles.push(...mkParticles(def.x, def.y - FH*0.5, def.color, 12));
+    // Near-miss slow motion
+    gs.slowMotionFrames = 22;
+    gs.shakeFrames = 5; gs.shakeIntensity = 3;
+    // Crowd reacts
+    if (gs.crowdReactions) gs.crowdReactions.push({ text: "WHAT A DODGE!", x: CW/2, y: CH/2 - 60, life: 1, decay: 0.018, col: "#00ffcc" });
+    return;
+  }
 
   if (def.state === "block") {
     gs.particles.push(...mkParticles(hx, hy, "#ffffff", 10));
@@ -339,12 +381,13 @@ function testHit(gs, atk, def) {
   def.lastHitTick = now;
 
   const rageMulti  = atk.hp <= 25 ? 1.15 : 1.0;
+  const tauntBonus = atk.tauntCooldown > 0 && atk.tauntCooldown < 150 ? 1.20 : 1.0; // bonus after taunting
   const comboBonus = atk.comboCount >= 3 ? 1.35 : atk.comboCount >= 2 ? 1.18 : 1;
   const isCrit     = Math.random() < (atk.hp <= 30 ? 0.16 : 0.08); // rage = higher crit chance
   const isFinisher = atk.attackType === "finisher";
   const isSuper    = atk.attackType === "super";
   const isSpecial  = atk.attackType === "special";
-  const dmg        = a.dmg * comboBonus * rageMulti * (isCrit ? 1.75 : 1);
+  const dmg        = a.dmg * comboBonus * rageMulti * tauntBonus * (isCrit ? 1.75 : 1);
 
   def.hp    = Math.max(0, def.hp - dmg);
   def.vx    = atk.facing * a.kb * (isCrit ? 1.4 : 1);
@@ -385,6 +428,28 @@ function testHit(gs, atk, def) {
   // ── Announcements ──
   if (isCrit && !isFinisher)  gs.announce = { text: "CRITICAL!", sub: `${Math.round(dmg)} DMG`, ttl: 55 };
   if (isFinisher) gs.announce = { text: "FINISHER!!", sub: `${Math.round(dmg)} DMG`, ttl: 80 };
+
+  // ── Clutch mechanic: both low HP → both deal more ──
+  const bothLow = atk.hp <= 18 && def.hp <= 18 && def.hp > 0;
+  if (bothLow) { def.hp = Math.max(0, def.hp - dmg * 0.25); } // extra 25% dmg
+
+  // ── Crowd reactions ──
+  if (!gs.crowdReactions) gs.crowdReactions = [];
+  if (isFinisher || isSuper) {
+    gs.crowdReactions.push({ text: CROWD_MSGS[Math.floor(Math.random()*CROWD_MSGS.length)], x: 80 + Math.random()*640, y: GROUND - 20 - Math.random()*30, life: 1, decay: 0.014, col: "#ffdd00" });
+  } else if (isCrit || atk.comboCount >= 3) {
+    gs.crowdReactions.push({ text: CROWD_MSGS[Math.floor(Math.random()*CROWD_MSGS.length)], x: 80 + Math.random()*640, y: GROUND - 20 - Math.random()*30, life: 1, decay: 0.02, col: "#ff8800" });
+  }
+  if (def.hp <= 10 && def.hp > 0) {
+    gs.crowdReactions.push({ text: "FINISH HIM!", x: CW/2, y: CH/2 - 55, life: 1, decay: 0.012, col: "#ff0000" });
+  }
+
+  // ── Fighter personality messages ──
+  const msgs = atk.comboCount >= 3 ? COMBO_MSGS : BLOCK_MSGS;
+  if (Math.random() < 0.35) {
+    atk.personality = atk.comboCount >= 3 ? COMBO_MSGS[Math.floor(Math.random()*COMBO_MSGS.length)] : TAUNT_MSGS[Math.floor(Math.random()*TAUNT_MSGS.length)];
+    atk.personalityTimer = 55;
+  }
 
   // ── Flash + shake ──
   gs.flashFrames  = isFinisher ? 20 : isSuper ? 14 : isCrit ? 12 : 7;
@@ -560,6 +625,12 @@ function tickParticles(gs) {
   gs.particles = gs.particles
     .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.18, life: p.life - p.decay }))
     .filter(p => p.life > 0);
+  if (gs.crowdReactions) {
+    gs.crowdReactions = gs.crowdReactions
+      .map(r => ({ ...r, y: r.y - 0.4, life: r.life - r.decay }))
+      .filter(r => r.life > 0);
+  }
+  gs.fighters.forEach(f => { if (f.personalityTimer > 0) f.personalityTimer--; });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1047,7 +1118,7 @@ function drawFighter(ctx, f, tick) {
     ctx.beginPath(); ctx.arc(x + FW * 0.48, y - FH * 0.84, 8, 0, Math.PI*2); ctx.fill();
   }
 
-  // Floating name label + RAGE warning
+  // Floating name label + RAGE + personality
   if (state !== "ko") {
     ctx.save();
     ctx.textAlign   = "center";
@@ -1065,6 +1136,22 @@ function drawFighter(ctx, f, tick) {
       ctx.fillStyle   = "#ff2200";
       ctx.shadowColor = "#ff0000"; ctx.shadowBlur = 16;
       ctx.fillText("⚡ RAGE MODE ⚡", x, y - FH - 20);
+    }
+    // Personality / taunt message
+    if (f.personalityTimer > 0 && f.personality) {
+      const pt = f.personalityTimer / 55;
+      ctx.globalAlpha = Math.min(1, pt * 1.5);
+      ctx.font = "bold 10px 'Courier New'";
+      ctx.fillStyle = f.tauntTimer > 0 ? "#ffdd00" : color;
+      ctx.shadowColor = f.tauntTimer > 0 ? "#ffdd00" : color; ctx.shadowBlur = 14;
+      ctx.fillText(`"${f.personality}"`, x, y - FH - 34);
+    }
+    // Taunt pose indicator
+    if (f.tauntTimer > 0) {
+      ctx.globalAlpha = 0.9;
+      ctx.font = "bold 13px 'Courier New'";
+      ctx.fillStyle = "#ffdd00"; ctx.shadowColor = "#ffaa00"; ctx.shadowBlur = 18;
+      ctx.fillText("😤 TAUNT!", x, y - FH - 48);
     }
     ctx.restore();
   }
@@ -1200,7 +1287,7 @@ function drawAnnounce(ctx, text, sub, tick) {
 function drawControls(ctx, playerName) {
   if (window.innerWidth < 600) return;
   ctx.save(); ctx.font = "9px 'Courier New'"; ctx.fillStyle = rgba("#ffffff", 0.18); ctx.textAlign = "center";
-  ctx.fillText(`${playerName}: ← → move · ↑/W jump · ↓ block · A punch · S kick · D special · ↑+D SUPER (when ★ full)`, CW / 2, CH - 7);
+  ctx.fillText(`${playerName}: ← → move · ↑/W jump · ↓ block · A punch · S kick · D special · ↑+D SUPER · T taunt`, CW / 2, CH - 7);
   ctx.restore();
 }
 
@@ -1414,6 +1501,18 @@ export default function BeatMEE() {
       drawFighter(ctx, f1, tick); drawFighter(ctx, f2, tick);
       if (gs.shakeFrames > 0) ctx.restore();
       drawParticles(ctx, particles);
+      // ── Crowd reaction floating texts ──
+      if (gs.crowdReactions) {
+        gs.crowdReactions.forEach(r => {
+          ctx.save();
+          ctx.globalAlpha = r.life;
+          ctx.textAlign = "center";
+          ctx.font = `bold ${12 + Math.floor((1-r.life)*4)}px 'Courier New'`;
+          ctx.fillStyle = r.col; ctx.shadowColor = r.col; ctx.shadowBlur = 16;
+          ctx.fillText(r.text, r.x, r.y);
+          ctx.restore();
+        });
+      }
       drawHUD(ctx, f1, f2, timer, round, wins);
       drawControls(ctx, f1.name);
       if (gph === "countdown") {
