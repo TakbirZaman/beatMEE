@@ -25,14 +25,14 @@ const DIFFICULTY = {
   easy:      { thinkMin: 22, thinkMax: 40, blockChance: 0.15, attackChance: 0.28, superChance: 0.00, aggression: 0.3 },
   semipro:   { thinkMin: 12, thinkMax: 24, blockChance: 0.50, attackChance: 0.58, superChance: 0.25, aggression: 0.6 },
   pro:       { thinkMin: 5,  thinkMax: 12, blockChance: 0.75, attackChance: 0.80, superChance: 0.55, aggression: 0.8 },
-  legendary: { thinkMin: 1,  thinkMax: 5,  blockChance: 0.95, attackChance: 0.95, superChance: 0.90, aggression: 1.0 },
+  legendary: { thinkMin: 1,  thinkMax: 2,  blockChance: 0.98, attackChance: 0.98, superChance: 0.98, aggression: 1.0 },
 };
 
 const SUPER_MAX        = 100;
 const SUPER_FILL_DMG   = 1.8;
 const SUPER_FILL_TAKEN = 2.4;
 
-const ROUND_TIME  = 60;
+const ROUND_TIME  = 90;
 const WINS_NEEDED = 2;
 const COMBO_TICKS = 55;
 
@@ -144,6 +144,9 @@ function initGS(playerName, difficulty = "medium", playerColor = "#00e5ff") {
     cpuDecision: { move: 0, blocking: false, jumping: false, attack: null },
     cpuThinkCd: 0,
     crowdReactions: [],
+    playerTookDamage: false,
+    cpuTauntCd: 0,
+    streakWins: 0,
   };
 }
 
@@ -164,6 +167,8 @@ function beginRound(gs) {
   gs.cpuDecision = { move: 0, blocking: false, jumping: false, attack: null };
   gs.cpuThinkCd  = 0;
   gs.crowdReactions = [];
+  gs.playerTookDamage = false;
+  gs.cpuTauntCd = 0;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -246,7 +251,8 @@ function applyCPUDecision(gs) {
 
   const diffCfg = DIFFICULTY[gs.difficulty] || DIFFICULTY.easy;
   const agg = diffCfg.aggression || 0.5;
-  cpu.vx = dec.move !== 0 ? dec.move * WALK_SPD * (0.75 + agg * 0.4) : cpu.vx * 0.65;
+  const legBoost = gs.difficulty === "legendary" ? 1.35 : 1.0;
+  cpu.vx = dec.move !== 0 ? dec.move * WALK_SPD * (0.75 + agg * 0.4) * legBoost : cpu.vx * 0.65;
   if (dec.jumping && onGround) cpu.vy = JUMP_VY;
   cpu.state = !onGround ? "jump" : Math.abs(cpu.vx) > 0.6 ? "walk" : "idle";
   applyPhysics(cpu);
@@ -350,7 +356,7 @@ function testHit(gs, atk, def) {
   // Near-miss slow motion: within 90% of range but still missed
   if (missed) {
     if (Math.abs(dx) < a.rng * 1.18 && Math.abs(dx) >= a.rng && gs.slowMotionFrames <= 0 && Math.random() < 0.45) {
-      gs.slowMotionFrames = 14;
+      gs.slowMotionFrames = 6;
     }
     return;
   }
@@ -364,7 +370,7 @@ function testHit(gs, atk, def) {
     gs.announce = { text: "DODGED!", sub: null, ttl: 40 };
     gs.particles.push(...mkParticles(def.x, def.y - FH*0.5, def.color, 12));
     // Near-miss slow motion
-    gs.slowMotionFrames = 22;
+    gs.slowMotionFrames = 10;
     gs.shakeFrames = 5; gs.shakeIntensity = 3;
     // Crowd reacts
     if (gs.crowdReactions) gs.crowdReactions.push({ text: "WHAT A DODGE!", x: CW/2, y: CH/2 - 60, life: 1, decay: 0.018, col: "#00ffcc" });
@@ -392,6 +398,7 @@ function testHit(gs, atk, def) {
   const dmg        = a.dmg * comboBonus * rageMulti * tauntBonus * (isCrit ? 1.75 : 1);
 
   def.hp    = Math.max(0, def.hp - dmg);
+  if (def === gs.fighters[0]) gs.playerTookDamage = true;
   def.vx    = atk.facing * a.kb * (isCrit ? 1.4 : 1);
   def.vy    = isFinisher ? -7 : -3.5;
   def.state = "hit"; def.stateTimer = a.stun * (isCrit ? 1.3 : 1);
@@ -425,7 +432,7 @@ function testHit(gs, atk, def) {
 
   // ── Particles ──
   const pc = isCrit ? "#ffffff" : isFinisher ? "#ff6600" : isSuper ? "#ffdd00" : isSpecial ? "#ff00ff" : atk.color;
-  gs.particles.push(...mkParticles(hx, hy, pc, isFinisher ? 40 : isCrit ? 28 : isSuper ? 32 : 18));
+  gs.particles.push(...mkParticles(hx, hy, pc, isFinisher ? 18 : isCrit ? 12 : isSuper ? 14 : 8));
 
   // ── Announcements ──
   if (isCrit && !isFinisher)  gs.announce = { text: "CRITICAL!", sub: `${Math.round(dmg)} DMG`, ttl: 55 };
@@ -455,19 +462,19 @@ function testHit(gs, atk, def) {
 
   // ── Flash + shake ──
   gs.flashFrames  = isFinisher ? 20 : isSuper ? 14 : isCrit ? 12 : 7;
-  if (isFinisher)  { gs.shakeFrames = 24; gs.shakeIntensity = 14; gs.slowMotionFrames = 40; }
-  else if (isSuper){ gs.shakeFrames = 18; gs.shakeIntensity = 10; gs.slowMotionFrames = 18; }
+  if (isFinisher)  { gs.shakeFrames = 24; gs.shakeIntensity = 14; gs.slowMotionFrames = 10; }
+  else if (isSuper){ gs.shakeFrames = 18; gs.shakeIntensity = 10; gs.slowMotionFrames = 10; }
   else if (isSpecial) { gs.shakeFrames = 9;  gs.shakeIntensity = 5; }
-  else if (isCrit)    { gs.shakeFrames = 10; gs.shakeIntensity = 7; gs.slowMotionFrames = 12; }
+  else if (isCrit)    { gs.shakeFrames = 10; gs.shakeIntensity = 7; gs.slowMotionFrames = 8; }
 
   // ── Cinematic KO check ──
   if (def.hp <= 0 && !gs.cinematicKO) {
     gs.cinematicKO       = true;
-    gs.cinematicKOTimer  = 80;
-    gs.slowMotionFrames  = 80;
-    gs.shakeFrames       = 28;
-    gs.shakeIntensity    = 12;
-    gs.particles.push(...mkParticles(def.x, def.y - FH*0.5, pc, 60));
+    gs.cinematicKOTimer  = 30;
+    gs.slowMotionFrames  = 28;
+    gs.shakeFrames       = 14;
+    gs.shakeIntensity    = 8;
+    gs.particles.push(...mkParticles(def.x, def.y - FH*0.5, pc, 22));
   }
 }
 
@@ -482,8 +489,8 @@ function testClash(gs) {
   p.hitDone = true; cpu.hitDone = true;
   p.vx = -4; cpu.vx = 4; // push apart
   const cx = (p.x + cpu.x) / 2, cy = p.y - FH * 0.6;
-  gs.particles.push(...mkParticles(cx, cy, "#ffffff", 30));
-  gs.particles.push(...mkParticles(cx, cy, "#ffaa00", 20));
+  gs.particles.push(...mkParticles(cx, cy, "#ffffff", 14));
+  gs.particles.push(...mkParticles(cx, cy, "#ffaa00", 10));
   gs.shakeFrames = 14; gs.shakeIntensity = 8;
   gs.hitStopFrames = 7;
   gs.flashFrames = 10;
@@ -503,7 +510,7 @@ function updateGS(gs, keys) {
   const isSlowMo = gs.slowMotionFrames > 0;
   if (isSlowMo) {
     gs.slowMotionFrames--;
-    if (gs.tick % 3 !== 0) { gs.tick++; tickParticles(gs); return; }
+    if (gs.tick % 2 !== 0) { gs.tick++; tickParticles(gs); return; }
   }
 
   gs.tick++;
@@ -562,7 +569,14 @@ function updateGS(gs, keys) {
     if (gs.cdFrames <= 0) {
       const loser  = player.hp <= 0 ? 0 : cpu.hp <= 0 ? 1 : -1;
       const winner = loser === 0 ? 1 : loser === 1 ? 0 : (player.hp >= cpu.hp ? 0 : 1);
+      // Perfect round check
+      if (winner === 0 && !gs.playerTookDamage) {
+        gs.crowdReactions = gs.crowdReactions || [];
+        gs.crowdReactions.push({ text: "✨ PERFECT ROUND! ✨", x: CW/2, y: CH/2 - 80, life: 1, decay: 0.008, col: "#00ffcc" });
+        gs.flashFrames = 30;
+      }
       gs.wins[winner]++;
+      gs.streakWins = winner === 0 ? (gs.streakWins || 0) + 1 : 0;
       if (gs.wins[winner] >= WINS_NEEDED) gs.phase = "results";
       else { gs.round++; beginRound(gs); }
     }
@@ -583,6 +597,15 @@ function updateGS(gs, keys) {
   }
 
   updatePlayer(player, keys);
+
+  // ── CPU auto-taunts ──
+  if (gs.cpuTauntCd > 0) gs.cpuTauntCd--;
+  if (gs.cpuTauntCd <= 0 && cpu.state === "idle" && Math.random() < 0.004) {
+    const cpuTaunts = ["You're pathetic!","Come on!","Is that it?","Too easy!","Embarrassing.","I'm bored.","Try harder."];
+    cpu.personality = cpuTaunts[Math.floor(Math.random() * cpuTaunts.length)];
+    cpu.personalityTimer = 70;
+    gs.cpuTauntCd = 240;
+  }
 
   if      (cpu.state === "hit")    { cpu.stateTimer = Math.max(0, cpu.stateTimer - 1); cpu.animTick++; if (cpu.stateTimer <= 0) cpu.state = "idle"; cpu.vx *= 0.75; applyPhysics(cpu); }
   else if (cpu.state === "attack") { tickCPUAttack(cpu); applyPhysics(cpu); updateCPU(gs); }
@@ -630,7 +653,8 @@ function tickParticles(gs) {
   if (gs.crowdReactions) {
     gs.crowdReactions = gs.crowdReactions
       .map(r => ({ ...r, y: r.y - 0.4, life: r.life - r.decay }))
-      .filter(r => r.life > 0);
+      .filter(r => r.life > 0)
+      .slice(-4);
   }
   gs.fighters.forEach(f => { if (f.personalityTimer > 0) f.personalityTimer--; });
 }
