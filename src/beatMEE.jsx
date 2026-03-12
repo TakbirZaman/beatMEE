@@ -682,129 +682,207 @@ function tickParticles(gs) {
 // DRAWING
 // ═══════════════════════════════════════════════════════════════
 function drawBG(ctx, tick, gs) {
-  // ── Sky gradient ──
+  const isKO = gs && gs.phase === "ko";
+  const excitement = gs && gs.fighters && gs.fighters.some(f => f.comboCount >= 3);
+
+  // ── Sky: dark stormy dusk with fog ──
   const sky = ctx.createLinearGradient(0, 0, 0, CH);
-  sky.addColorStop(0, "#02020c"); sky.addColorStop(1, "#0a0a22");
+  sky.addColorStop(0, isKO ? "#0a0205" : "#060210");
+  sky.addColorStop(0.45, isKO ? "#160508" : "#0d0618");
+  sky.addColorStop(1, "#100820");
   ctx.fillStyle = sky; ctx.fillRect(0, 0, CW, CH);
 
-  // ── Parallax stars (2 layers) ──
-  for (let i = 0; i < 55; i++) {
-    const sx = ((i * 139 + 17) + tick * 0.08) % CW;
-    const sy = (i * 71 + 9) % (CH * 0.52);
-    ctx.globalAlpha = (0.2 + 0.6 * Math.abs(Math.sin(tick * 0.008 + i))) * 0.5;
-    ctx.fillStyle = "#ffffff"; ctx.fillRect(sx, sy, 1, 1);
-  }
-  for (let i = 0; i < 30; i++) {
-    const sx = ((i * 223 + 55) + tick * 0.03) % CW;
-    const sy = (i * 97 + 22) % (CH * 0.48);
-    ctx.globalAlpha = (0.1 + 0.4 * Math.abs(Math.sin(tick * 0.012 + i * 2))) * 0.4;
-    ctx.fillStyle = "#aaccff"; ctx.fillRect(sx, sy, 1.5, 1.5);
-  }
-  ctx.globalAlpha = 1;
+  // ── Eerie moon ──
+  const moonX = 680, moonY = 52;
+  ctx.save();
+  // Moon glow halo
+  const mg = ctx.createRadialGradient(moonX, moonY, 12, moonX, moonY, 55);
+  mg.addColorStop(0, "rgba(220,200,120,0.18)");
+  mg.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = mg; ctx.fillRect(moonX-55, moonY-55, 110, 110);
+  // Moon disc
+  ctx.beginPath(); ctx.arc(moonX, moonY, 20, 0, Math.PI*2);
+  ctx.fillStyle = "#d4c87a"; ctx.shadowColor = "#ffee88"; ctx.shadowBlur = 22; ctx.fill();
+  // Moon craters
+  ctx.globalAlpha = 0.18; ctx.fillStyle = "#8a7a40";
+  [[moonX-6,moonY-4,5],[moonX+7,moonY+5,3],[moonX-2,moonY+7,3.5]].forEach(([cx,cy,r])=>{
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  ctx.restore();
 
-  // ── City buildings (back layer) ──
-  ctx.fillStyle = "#05051a";
-  [[0,155,52],[56,118,46],[106,142,40],[150,128,32],[186,160,24],
-   [558,160,24],[586,128,32],[622,142,40],[666,118,46],[716,155,52],[768,138,32]]
-    .forEach(([bx, by, bw]) => ctx.fillRect(bx, by, bw, CH));
-
-  // ── Neon signs on buildings ──
-  const signs = [
-    { x: 62,  y: 104, text: "NEON",   col: "#ff0066", period: 90  },
-    { x: 620, y: 112, text: "BRAWL",  col: "#00e5ff", period: 110 },
-    { x: 160, y: 116, text: "FIGHT",  col: "#ffdd00", period: 70  },
-    { x: 726, y: 140, text: "K.O.",   col: "#ff4400", period: 130 },
-  ];
-  signs.forEach(s => {
-    const on = Math.floor(tick / (s.period / 2)) % 2 === 0;
-    ctx.save();
-    ctx.font = "bold 8px 'Courier New'"; ctx.textAlign = "center";
-    ctx.fillStyle = on ? s.col : rgba(s.col.replace("#",""), 0.25);
-    ctx.shadowColor = s.col; ctx.shadowBlur = on ? 14 : 0;
-    ctx.globalAlpha = on ? 0.9 : 0.3;
-    ctx.fillText(s.text, s.x, s.y);
+  // ── Moving storm clouds ──
+  const cloudCols = ["#1a0a22","#120818","#0e0614","#160a1e","#0c0510"];
+  for (let i = 0; i < 7; i++) {
+    const cx = ((i * 153 + tick * (0.12 + i*0.018)) % (CW + 120)) - 60;
+    const cy = 28 + (i % 3) * 22;
+    const cr = 55 + i * 18;
+    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
+    cg.addColorStop(0, cloudCols[i % cloudCols.length]);
+    cg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.save(); ctx.globalAlpha = 0.72 + (i % 3)*0.08;
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.ellipse(cx, cy, cr, cr*0.52, 0, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-  });
-
-  // ── Blinking building windows ──
-  for (let i = 0; i < 28; i++) {
-    if ((tick + i * 23) % 200 < 140) {
-      ctx.globalAlpha = 0.3; ctx.fillStyle = "#ffffaa";
-      ctx.fillRect(10 + i * 29 + (i % 5) * 4, 122 + (i % 5) * 14, 5, 6);
-    }
   }
-  ctx.globalAlpha = 1;
 
-  // ── Spotlight beams sweeping from below ──
-  const spots = [
-    { baseX: 180, phase: 0,   r: 0,   g: 229, b: 255, a: 0.06 },
-    { baseX: 620, phase: 1.8, r: 255, g: 0,   b: 100, a: 0.05 },
-    { baseX: 400, phase: 3.5, r: 255, g: 200, b: 0,   a: 0.04 },
-  ];
-  spots.forEach(sp => {
-    const angle = Math.sin(tick * 0.018 + sp.phase) * 0.35;
-    const tx2 = sp.baseX + Math.tan(angle) * (CH - GROUND - 10);
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(sp.baseX - 14, CH);
-    ctx.lineTo(sp.baseX + 14, CH);
-    ctx.lineTo(tx2 + 28, GROUND - 18);
-    ctx.lineTo(tx2 - 28, GROUND - 18);
-    ctx.closePath();
-    const sg = ctx.createLinearGradient(sp.baseX, CH, tx2, GROUND);
-    sg.addColorStop(0,   `rgba(${sp.r},${sp.g},${sp.b},0)`);
-    sg.addColorStop(0.5, `rgba(${sp.r},${sp.g},${sp.b},${sp.a})`);
-    sg.addColorStop(1,   `rgba(${sp.r},${sp.g},${sp.b},0)`);
-    ctx.fillStyle = sg; ctx.globalAlpha = 1;
-    ctx.fill(); ctx.restore();
-  });
-
-  // ── CROWD silhouettes at bottom edge ──
-  const crowdY = GROUND + 2;
-  const excitement = gs && (gs.phase === "ko" || (gs.fighters && gs.fighters.some(f => f.comboCount >= 3))) ? 1 : 0;
+  // ── Stars flickering through clouds ──
   for (let i = 0; i < 38; i++) {
-    const cx2 = i * 22 + (i % 3) * 4;
-    const bobAmt = excitement > 0
-      ? Math.abs(Math.sin(tick * 0.18 + i * 0.7)) * 14
-      : Math.abs(Math.sin(tick * 0.06 + i * 0.9)) * 5;
-    const ch2 = 18 + (i % 5) * 5 + bobAmt;
-    const alpha = 0.22 + (i % 4) * 0.04;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = "#000000";
-    // Head
-    ctx.beginPath(); ctx.arc(cx2 + 11, crowdY - ch2 + 5, 5 + (i%3), 0, Math.PI*2); ctx.fill();
-    // Body
-    ctx.beginPath(); ctx.fillRect(cx2 + 5, crowdY - ch2 + 9, 12, ch2 - 9); ctx.fill();
-    // Occasional colored lighter / phone
-    if (i % 5 === 0) {
-      const lc = ["#ff4400","#00e5ff","#ffdd00","#ff00ff"][i % 4];
-      ctx.globalAlpha = 0.5 + 0.4 * Math.abs(Math.sin(tick * 0.1 + i));
-      ctx.fillStyle = lc; ctx.shadowColor = lc; ctx.shadowBlur = 8;
-      ctx.beginPath(); ctx.arc(cx2 + 11, crowdY - ch2 - 2, 3, 0, Math.PI*2); ctx.fill();
-      ctx.shadowBlur = 0;
-    }
+    const sx = (i * 211 + 31) % CW;
+    const sy = (i * 67 + 11) % 80;
+    const blink = Math.abs(Math.sin(tick * 0.02 + i * 1.3));
+    ctx.globalAlpha = blink * 0.35;
+    ctx.fillStyle = i%5===0 ? "#ffccaa" : "#eeeeff";
+    ctx.fillRect(sx, sy, 1.2, 1.2);
   }
   ctx.globalAlpha = 1;
 
-  // ── Floor ──
-  const floor = ctx.createLinearGradient(0, GROUND, 0, CH);
-  floor.addColorStop(0, "#141430"); floor.addColorStop(1, "#07071a");
-  ctx.fillStyle = floor; ctx.fillRect(0, GROUND, CW, CH - GROUND);
-  // Floor reflection strips
-  ctx.globalAlpha = 0.06;
-  for (let i = 0; i < 6; i++) {
-    ctx.fillStyle = i % 2 === 0 ? "#00e5ff" : "#ff0066";
-    ctx.fillRect(i * 135, GROUND, 135, CH - GROUND);
+  // ── Distant sea/ocean glow on horizon ──
+  const seaGlow = ctx.createLinearGradient(0, CH*0.44, 0, CH*0.58);
+  seaGlow.addColorStop(0, "rgba(0,0,0,0)");
+  seaGlow.addColorStop(0.5, isKO ? "rgba(80,10,10,0.22)" : "rgba(0,40,80,0.22)");
+  seaGlow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = seaGlow; ctx.fillRect(0, CH*0.44, CW, CH*0.14);
+
+  // ── Foggy mist layer at mid-ground ──
+  const mistY = GROUND - 48;
+  for (let i = 0; i < 5; i++) {
+    const mx = ((i * 190 + tick * (0.06 + i*0.01)) % (CW + 200)) - 100;
+    const mg2 = ctx.createRadialGradient(mx, mistY, 0, mx, mistY, 120 + i*28);
+    mg2.addColorStop(0, isKO ? "rgba(60,8,8,0.18)" : "rgba(10,20,40,0.2)");
+    mg2.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = mg2; ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.ellipse(mx, mistY, 130+i*22, 36, 0, 0, Math.PI*2); ctx.fill();
   }
   ctx.globalAlpha = 1;
-  ctx.save(); ctx.shadowColor = "#5050ff"; ctx.shadowBlur = 28;
-  ctx.strokeStyle = "#4444cc"; ctx.lineWidth = 2;
+
+  // ── Dark forest trees (back layer) ──
+  const treeData = [
+    [28,  CH*0.38, 0.55], [90,  CH*0.32, 0.7 ], [158, CH*0.28, 0.85],
+    [218, CH*0.35, 0.6 ], [282, CH*0.30, 0.75], [340, CH*0.26, 0.9 ],
+    [750, CH*0.38, 0.55], [688, CH*0.32, 0.7 ], [630, CH*0.28, 0.82],
+    [570, CH*0.35, 0.62], [512, CH*0.30, 0.72],
+  ];
+  // Distant small trees
+  ctx.globalAlpha = 0.38;
+  ctx.fillStyle = "#0a0410";
+  for (let i = 0; i < 14; i++) {
+    const tx = 40 + i * 58;
+    const th = 80 + (i%4)*28;
+    const tw = 22 + (i%3)*8;
+    // Pine triangle
+    ctx.beginPath();
+    ctx.moveTo(tx, GROUND - th);
+    ctx.lineTo(tx - tw, GROUND - th*0.25);
+    ctx.lineTo(tx + tw, GROUND - th*0.25);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(tx, GROUND - th*0.7);
+    ctx.lineTo(tx - tw*1.15, GROUND - th*0.08);
+    ctx.lineTo(tx + tw*1.15, GROUND - th*0.08);
+    ctx.closePath(); ctx.fill();
+    // Trunk
+    ctx.fillRect(tx - 4, GROUND - th*0.08, 8, th*0.08);
+  }
+  ctx.globalAlpha = 1;
+
+  // ── Foreground large trees (left + right) ──
+  [[0, GROUND - 10, -1], [CW, GROUND - 10, 1]].forEach(([bx, by, side]) => {
+    for (let t = 0; t < 3; t++) {
+      const tx = bx + side * (t * 44 + 22);
+      const th = 200 - t * 40;
+      const tw = 35 - t * 6;
+      ctx.globalAlpha = 0.85 - t * 0.18;
+      ctx.fillStyle = "#040208";
+      // Pine layers
+      [0.95, 0.65, 0.38].forEach((yfrac, li) => {
+        const layerW = tw * (1.4 - li*0.25) * (1 + t*0.1);
+        ctx.beginPath();
+        ctx.moveTo(tx, by - th * yfrac - 18);
+        ctx.lineTo(tx - side * layerW, by - th * (yfrac - 0.35));
+        ctx.lineTo(tx + side * layerW * 0.3, by - th * (yfrac - 0.35));
+        ctx.closePath(); ctx.fill();
+      });
+      // Gnarled trunk
+      ctx.strokeStyle = "#070310"; ctx.lineWidth = 14 - t*3; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(tx, by);
+      ctx.quadraticCurveTo(tx + side*12, by - th*0.5, tx, by - th); ctx.stroke();
+    }
+  });
+  ctx.globalAlpha = 1;
+
+  // ── Hanging creepy vines / roots ──
+  ctx.strokeStyle = "rgba(20,8,30,0.5)"; ctx.lineWidth = 2;
+  for (let i = 0; i < 6; i++) {
+    const vx = 60 + i * 130;
+    const vy = 0;
+    const vlen = 60 + (i%3)*30;
+    const sway = Math.sin(tick*0.015 + i) * 8;
+    ctx.beginPath();
+    ctx.moveTo(vx, vy);
+    ctx.quadraticCurveTo(vx + sway, vy + vlen*0.5, vx + sway*1.4, vy + vlen);
+    ctx.stroke();
+  }
+
+  // ── Floating eerie fireflies / will-o-wisps ──
+  for (let i = 0; i < 12; i++) {
+    const ft = tick * 0.025 + i * 2.1;
+    const fx = 120 + i * 55 + Math.sin(ft + i) * 28;
+    const fy2 = GROUND - 60 - Math.abs(Math.sin(ft*0.7 + i*0.4)) * 80;
+    const fc = i % 3 === 0 ? "#44ff88" : i % 3 === 1 ? "#88aaff" : "#ffdd44";
+    const fa = 0.4 + 0.4*Math.abs(Math.sin(ft*1.2));
+    ctx.globalAlpha = fa;
+    ctx.fillStyle = fc; ctx.shadowColor = fc; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(fx, fy2, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+
+  // ── Sea/wet ground reflections ──
+  const floor = ctx.createLinearGradient(0, GROUND, 0, CH);
+  floor.addColorStop(0, isKO ? "#140808" : "#080818");
+  floor.addColorStop(0.4, isKO ? "#0c0506" : "#050510");
+  floor.addColorStop(1, "#030308");
+  ctx.fillStyle = floor; ctx.fillRect(0, GROUND, CW, CH - GROUND);
+
+  // Wet floor shimmer
+  ctx.globalAlpha = 0.07;
+  for (let i = 0; i < 8; i++) {
+    const rx = (i * 110 + tick * 0.3) % CW;
+    ctx.fillStyle = i%2===0 ? "#334466" : "#224422";
+    ctx.fillRect(rx, GROUND, 80, CH - GROUND);
+  }
+  ctx.globalAlpha = 1;
+
+  // Ground fog wisps low-rolling
+  for (let i = 0; i < 6; i++) {
+    const gx = ((i * 160 + tick * 0.18) % (CW + 180)) - 90;
+    const gg = ctx.createRadialGradient(gx, GROUND + 18, 0, gx, GROUND + 18, 90);
+    gg.addColorStop(0, "rgba(15,8,25,0.5)");
+    gg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gg; ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.ellipse(gx, GROUND+18, 100, 22, 0, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Ground edge line with eerie glow
+  ctx.save();
+  ctx.shadowColor = isKO ? "#440011" : "#223344";
+  ctx.shadowBlur = 20;
+  ctx.strokeStyle = isKO ? "#331122" : "#1a2a3a";
+  ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(0, GROUND); ctx.lineTo(CW, GROUND); ctx.stroke();
   ctx.restore();
 
-  // ── CRT scanlines ──
-  ctx.globalAlpha = 0.032;
-  for (let sy = 0; sy < CH; sy += 3) { ctx.fillStyle = "#000"; ctx.fillRect(0, sy, CW, 1.5); }
+  // ── Lightning flash on KO ──
+  if (isKO && Math.floor(tick / 18) % 7 === 0) {
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, CW, CH);
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Subtle CRT grain ──
+  ctx.globalAlpha = 0.025;
+  for (let sy = 0; sy < CH; sy += 3) { ctx.fillStyle="#000"; ctx.fillRect(0, sy, CW, 1.5); }
   ctx.globalAlpha = 1;
 }
 
@@ -839,20 +917,41 @@ function drawFighter(ctx, f, tick) {
     // Arms out
     ctx.beginPath(); ctx.moveTo(x - 14, fy - 18); ctx.lineTo(x - 36, fy - 28); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x + 10, fy - 18); ctx.lineTo(x + 32, fy - 8); ctx.stroke();
-    // X eyes
+    // Hollow skull eyes (dark circles with red irises)
     const hx2 = x + dir * (-FH * 0.33), hy2 = fy - FW * 0.2;
-    ctx.strokeStyle = "#ff0000"; ctx.lineWidth = 2.5; ctx.shadowColor = "#ff0000"; ctx.shadowBlur = 8;
-    ctx.beginPath(); ctx.moveTo(hx2-6, hy2-5); ctx.lineTo(hx2-1, hy2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(hx2-1, hy2-5); ctx.lineTo(hx2-6, hy2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(hx2+1, hy2-5); ctx.lineTo(hx2+6, hy2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(hx2+6, hy2-5); ctx.lineTo(hx2+1, hy2); ctx.stroke();
-    // Dizzy stars + sparkles
-    for (let i = 0; i < 5; i++) {
-      const a2 = tick * 0.1 + i * (Math.PI * 2 / 5);
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = i % 2 === 0 ? "#ffff44" : "#ff9900";
-      ctx.shadowColor = "#ffff00"; ctx.shadowBlur = 12;
-      ctx.beginPath(); ctx.arc(x + Math.cos(a2)*26, fy - FH*0.75 + Math.sin(a2)*11, 4.5, 0, Math.PI*2); ctx.fill();
+    // Dark eye sockets
+    ctx.fillStyle = "#000000"; ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.ellipse(hx2-4, hy2-1, 5.5, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(hx2+4, hy2-1, 5.5, 4, 0, 0, Math.PI*2); ctx.fill();
+    // Red glowing irises
+    ctx.fillStyle = "#cc0000"; ctx.shadowColor = "#ff0000"; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(hx2-4, hy2-1, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx2+4, hy2-1, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    // Gaping horrified mouth
+    ctx.fillStyle = "#000000";
+    ctx.beginPath(); ctx.ellipse(hx2, hy2+6, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+    // Teeth in mouth
+    ctx.fillStyle = "#cccccc";
+    for (let t = 0; t < 3; t++) {
+      ctx.beginPath(); ctx.rect(hx2 - 5 + t*4, hy2+2, 3, 4); ctx.fill();
+    }
+    // Sweat drops of fear
+    ctx.fillStyle = "#3399ff"; ctx.globalAlpha = 0.7;
+    [[hx2-14, hy2-8, tick*0.09],[hx2+14, hy2-4, tick*0.12+1]].forEach(([sx,sy,st])=>{
+      const sdrip = Math.abs(Math.sin(st)) * 5;
+      ctx.beginPath(); ctx.ellipse(sx, sy + sdrip, 2, 3.5, 0, 0, Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha = 0.9;
+    // Spinning skull/ghost icons instead of stars
+    for (let i = 0; i < 4; i++) {
+      const a2 = tick * 0.08 + i * (Math.PI * 2 / 4);
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = i%2===0 ? "#ffffff" : "#cc8800";
+      ctx.shadowColor = i%2===0 ? "#aaaaff" : "#ffaa00"; ctx.shadowBlur = 10;
+      ctx.font = `${9 + (i%2)*2}px serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(i%2===0 ? "💀" : "⭐", x + Math.cos(a2)*28, fy - FH*0.78 + Math.sin(a2)*10);
     }
     ctx.restore(); return;
   }
