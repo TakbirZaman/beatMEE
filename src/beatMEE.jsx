@@ -26,7 +26,7 @@ const DIFFICULTY = {
   easy:      { thinkMin: 22, thinkMax: 40, blockChance: 0.15, attackChance: 0.28, superChance: 0.00, aggression: 0.3 },
   semipro:   { thinkMin: 12, thinkMax: 24, blockChance: 0.50, attackChance: 0.58, superChance: 0.25, aggression: 0.6 },
   pro:       { thinkMin: 5,  thinkMax: 12, blockChance: 0.75, attackChance: 0.80, superChance: 0.55, aggression: 0.8 },
-  legendary: { thinkMin: 1,  thinkMax: 2,  blockChance: 0.98, attackChance: 0.98, superChance: 0.98, aggression: 1.0 },
+  legendary: { thinkMin: 1,  thinkMax: 1,  blockChance: 1.00, attackChance: 0.99, superChance: 0.99, aggression: 1.0 },
 };
 
 const SUPER_MAX        = 100;
@@ -206,14 +206,39 @@ function updateCPU(gs) {
     dec.attack = "super"; return;
   }
 
-  // ── LEGENDARY MIND GAME: adapt to player behavior ──
+  // ── LEGENDARY MIND GAME: near-perfect AI ──
+  if (gs.difficulty === "legendary") {
+    // ALWAYS block incoming attack instantly — no randomness
+    if (player.state === "attack" && dist < 140) { dec.blocking = true; return; }
+    // Finish Him — always go for kill
+    if (player.hp <= 14 && dist < 150 && onGround) {
+      dec.attack = cpu.superMeter >= SUPER_MAX * 0.5 ? "finisher" : "special"; return;
+    }
+    // Super instantly when ready and close
+    if (cpu.superMeter >= SUPER_MAX && dist < 145) { dec.attack = "super"; return; }
+    // Rush the player immediately if far
+    if (dist > 100) { dec.move = Math.sign(dx); gs.cpuThinkCd = 1; return; }
+    // In range — rotate attacks to be unpredictable, never just punches
+    if (dist < 120 && onGround) {
+      const roll = Math.random();
+      dec.attack = roll < 0.30 ? "special"
+                 : roll < 0.55 ? "heavykick"
+                 : roll < 0.75 ? "dash"
+                 : roll < 0.88 ? "punch"
+                 : "special";
+      return;
+    }
+    // If player jumps, jump-cancel and wait to punish landing
+    if (player.state === "jump") { dec.move = Math.sign(dx); gs.cpuThinkCd = 1; return; }
+    dec.move = Math.sign(dx); return;
+  }
+
   let adaptedBlock   = diff.blockChance;
   let adaptedAttack  = diff.attackChance;
-  if (gs.difficulty === "legendary" && gs.playerBehavior) {
+  if (gs.playerBehavior) {
     const pb = gs.playerBehavior;
-    if (pb.punchCount > 4) adaptedBlock  = Math.min(0.98, adaptedBlock  + 0.12);
-    if (pb.blockCount  > 3) adaptedAttack = Math.min(0.98, adaptedAttack + 0.15);
-    if (pb.jumpCount   > 2) dec.jumping = false; // punish jump spam by staying grounded
+    if (pb.punchCount > 4) adaptedBlock  = Math.min(0.95, adaptedBlock + 0.1);
+    if (pb.blockCount  > 3) adaptedAttack = Math.min(0.95, adaptedAttack + 0.12);
   }
 
   // Finish Him - use finisher at low health
@@ -252,7 +277,7 @@ function applyCPUDecision(gs) {
 
   const diffCfg = DIFFICULTY[gs.difficulty] || DIFFICULTY.easy;
   const agg = diffCfg.aggression || 0.5;
-  const legBoost = gs.difficulty === "legendary" ? 1.35 : 1.0;
+  const legBoost = gs.difficulty === "legendary" ? 1.62 : 1.0;
   cpu.vx = dec.move !== 0 ? dec.move * WALK_SPD * (0.75 + agg * 0.4) * legBoost : cpu.vx * 0.65;
   if (dec.jumping && onGround) cpu.vy = JUMP_VY;
   cpu.state = !onGround ? "jump" : Math.abs(cpu.vx) > 0.6 ? "walk" : "idle";
@@ -392,13 +417,14 @@ function testHit(gs, atk, def) {
   def.lastHitTick = now;
 
   const rageMulti  = atk.hp <= 25 ? 1.15 : 1.0;
+  const legDmgBoost = gs && gs.difficulty === 'legendary' && atk === gs.fighters[1] ? 1.22 : 1.0;
   const tauntBonus = atk.tauntCooldown > 0 && atk.tauntCooldown < 150 ? 1.20 : 1.0; // bonus after taunting
   const comboBonus = atk.comboCount >= 3 ? 1.35 : atk.comboCount >= 2 ? 1.18 : 1;
   const isCrit     = Math.random() < (atk.hp <= 30 ? 0.16 : 0.08); // rage = higher crit chance
   const isFinisher = atk.attackType === "finisher";
   const isSuper    = atk.attackType === "super";
   const isSpecial  = atk.attackType === "special";
-  const dmg        = a.dmg * comboBonus * rageMulti * tauntBonus * (isCrit ? 1.75 : 1);
+  const dmg        = a.dmg * comboBonus * rageMulti * tauntBonus * (isCrit ? 1.75 : 1) * legDmgBoost;
 
   def.hp    = Math.max(0, def.hp - dmg);
   if (def === gs.fighters[0]) gs.playerTookDamage = true;
@@ -685,204 +711,263 @@ function drawBG(ctx, tick, gs) {
   const isKO = gs && gs.phase === "ko";
   const excitement = gs && gs.fighters && gs.fighters.some(f => f.comboCount >= 3);
 
-  // ── Sky: dark stormy dusk with fog ──
-  const sky = ctx.createLinearGradient(0, 0, 0, CH);
-  sky.addColorStop(0, isKO ? "#0a0205" : "#060210");
-  sky.addColorStop(0.45, isKO ? "#160508" : "#0d0618");
-  sky.addColorStop(1, "#100820");
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, CW, CH);
+  // ── SKY: deep twilight purple-green (visible, moody) ──
+  const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+  sky.addColorStop(0,    isKO ? "#1a0520" : "#0f1a2e");
+  sky.addColorStop(0.35, isKO ? "#2a0a10" : "#112238");
+  sky.addColorStop(0.7,  isKO ? "#1a1005" : "#0d2418");
+  sky.addColorStop(1,    isKO ? "#200808" : "#0a1a10");
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, CW, GROUND);
 
-  // ── Eerie moon ──
-  const moonX = 680, moonY = 52;
-  ctx.save();
-  // Moon glow halo
-  const mg = ctx.createRadialGradient(moonX, moonY, 12, moonX, moonY, 55);
-  mg.addColorStop(0, "rgba(220,200,120,0.18)");
-  mg.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = mg; ctx.fillRect(moonX-55, moonY-55, 110, 110);
+  // ── FULL MOON — bright and big ──
+  const moonX = 660, moonY = 58;
+  // Outer glow
+  const mg = ctx.createRadialGradient(moonX, moonY, 18, moonX, moonY, 90);
+  mg.addColorStop(0,   "rgba(255,245,180,0.28)");
+  mg.addColorStop(0.4, "rgba(220,210,130,0.10)");
+  mg.addColorStop(1,   "rgba(0,0,0,0)");
+  ctx.fillStyle = mg; ctx.fillRect(moonX-90, moonY-90, 180, 180);
   // Moon disc
-  ctx.beginPath(); ctx.arc(moonX, moonY, 20, 0, Math.PI*2);
-  ctx.fillStyle = "#d4c87a"; ctx.shadowColor = "#ffee88"; ctx.shadowBlur = 22; ctx.fill();
-  // Moon craters
-  ctx.globalAlpha = 0.18; ctx.fillStyle = "#8a7a40";
-  [[moonX-6,moonY-4,5],[moonX+7,moonY+5,3],[moonX-2,moonY+7,3.5]].forEach(([cx,cy,r])=>{
-    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(moonX, moonY, 28, 0, Math.PI*2);
+  ctx.fillStyle = "#f0e8a0"; ctx.shadowColor = "#ffe880"; ctx.shadowBlur = 36; ctx.fill();
+  // Crater details
+  ctx.shadowBlur = 0;
+  [[-9,-5,6],[9,7,4],[-2,10,5],[14,-4,3]].forEach(([dx,dy,r])=>{
+    ctx.beginPath(); ctx.arc(moonX+dx, moonY+dy, r, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(0,0,0,0.14)"; ctx.fill();
   });
-  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-  ctx.restore();
+  ctx.shadowBlur = 0;
 
-  // ── Moving storm clouds ──
-  const cloudCols = ["#1a0a22","#120818","#0e0614","#160a1e","#0c0510"];
-  for (let i = 0; i < 7; i++) {
-    const cx = ((i * 153 + tick * (0.12 + i*0.018)) % (CW + 120)) - 60;
-    const cy = 28 + (i % 3) * 22;
-    const cr = 55 + i * 18;
-    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
-    cg.addColorStop(0, cloudCols[i % cloudCols.length]);
-    cg.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.save(); ctx.globalAlpha = 0.72 + (i % 3)*0.08;
-    ctx.fillStyle = cg; ctx.beginPath(); ctx.ellipse(cx, cy, cr, cr*0.52, 0, 0, Math.PI*2); ctx.fill();
+  // ── STARS — bright, visible ──
+  for (let i = 0; i < 55; i++) {
+    const sx = (i * 211 + 31) % CW;
+    const sy = (i * 67 + 7) % (GROUND * 0.6);
+    const blink = 0.4 + 0.55 * Math.abs(Math.sin(tick * 0.018 + i * 1.3));
+    ctx.globalAlpha = blink;
+    ctx.fillStyle = i%7===0 ? "#ffcc88" : i%5===0 ? "#aaddff" : "#ddeeff";
+    const sr = i%11===0 ? 2 : 1.2;
+    ctx.fillRect(sx, sy, sr, sr);
+  }
+  ctx.globalAlpha = 1;
+
+  // ── DARK CLOUDS (visible but translucent) ──
+  const cloudPalette = [
+    "rgba(30,18,50,0.55)","rgba(20,35,15,0.5)","rgba(40,15,25,0.48)",
+    "rgba(15,30,40,0.52)","rgba(25,10,35,0.5)",
+  ];
+  for (let i = 0; i < 8; i++) {
+    const cx = ((i * 137 + tick * (0.1 + i*0.015)) % (CW+150)) - 75;
+    const cy = 22 + (i%4)*20;
+    const cr = 65 + i*16;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = cloudPalette[i % cloudPalette.length];
+    ctx.beginPath(); ctx.ellipse(cx, cy, cr, cr*0.45, 0, 0, Math.PI*2); ctx.fill();
+    // Lighter cloud edge
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#8899aa";
+    ctx.beginPath(); ctx.ellipse(cx-8, cy-4, cr*0.7, cr*0.22, 0, 0, Math.PI*2); ctx.fill();
     ctx.restore();
   }
 
-  // ── Stars flickering through clouds ──
-  for (let i = 0; i < 38; i++) {
-    const sx = (i * 211 + 31) % CW;
-    const sy = (i * 67 + 11) % 80;
-    const blink = Math.abs(Math.sin(tick * 0.02 + i * 1.3));
-    ctx.globalAlpha = blink * 0.35;
-    ctx.fillStyle = i%5===0 ? "#ffccaa" : "#eeeeff";
-    ctx.fillRect(sx, sy, 1.2, 1.2);
-  }
-  ctx.globalAlpha = 1;
+  // ── DISTANT OCEAN / SEA glowing at horizon ──
+  const horizonY = GROUND - 120;
+  const seaGrad = ctx.createLinearGradient(0, horizonY, 0, horizonY + 55);
+  seaGrad.addColorStop(0, "rgba(0,0,0,0)");
+  seaGrad.addColorStop(0.4, isKO ? "rgba(110,20,10,0.35)" : "rgba(10,80,120,0.35)");
+  seaGrad.addColorStop(1,   "rgba(0,0,0,0)");
+  ctx.fillStyle = seaGrad; ctx.fillRect(0, horizonY, CW, 55);
 
-  // ── Distant sea/ocean glow on horizon ──
-  const seaGlow = ctx.createLinearGradient(0, CH*0.44, 0, CH*0.58);
-  seaGlow.addColorStop(0, "rgba(0,0,0,0)");
-  seaGlow.addColorStop(0.5, isKO ? "rgba(80,10,10,0.22)" : "rgba(0,40,80,0.22)");
-  seaGlow.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = seaGlow; ctx.fillRect(0, CH*0.44, CW, CH*0.14);
-
-  // ── Foggy mist layer at mid-ground ──
-  const mistY = GROUND - 48;
+  // Sea shimmer lines on horizon
+  ctx.save();
   for (let i = 0; i < 5; i++) {
-    const mx = ((i * 190 + tick * (0.06 + i*0.01)) % (CW + 200)) - 100;
-    const mg2 = ctx.createRadialGradient(mx, mistY, 0, mx, mistY, 120 + i*28);
-    mg2.addColorStop(0, isKO ? "rgba(60,8,8,0.18)" : "rgba(10,20,40,0.2)");
-    mg2.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = mg2; ctx.globalAlpha = 0.7;
-    ctx.beginPath(); ctx.ellipse(mx, mistY, 130+i*22, 36, 0, 0, Math.PI*2); ctx.fill();
+    const lx = (i * 170 + tick * 0.4) % CW;
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = isKO ? "#aa3322" : "#44aacc";
+    ctx.fillRect(lx, horizonY + 20 + i*4, 50 + i*20, 1.5);
   }
-  ctx.globalAlpha = 1;
+  ctx.restore();
 
-  // ── Dark forest trees (back layer) ──
-  const treeData = [
-    [28,  CH*0.38, 0.55], [90,  CH*0.32, 0.7 ], [158, CH*0.28, 0.85],
-    [218, CH*0.35, 0.6 ], [282, CH*0.30, 0.75], [340, CH*0.26, 0.9 ],
-    [750, CH*0.38, 0.55], [688, CH*0.32, 0.7 ], [630, CH*0.28, 0.82],
-    [570, CH*0.35, 0.62], [512, CH*0.30, 0.72],
-  ];
-  // Distant small trees
-  ctx.globalAlpha = 0.38;
-  ctx.fillStyle = "#0a0410";
-  for (let i = 0; i < 14; i++) {
-    const tx = 40 + i * 58;
-    const th = 80 + (i%4)*28;
-    const tw = 22 + (i%3)*8;
-    // Pine triangle
+  // ── BACKGROUND FOREST ROW (mid-distance, clearly visible) ──
+  // Draw with green-tinted silhouettes so you can clearly see it's a forest
+  ctx.save();
+  for (let i = 0; i < 18; i++) {
+    const tx = i * 48 + (i%2)*12;
+    const th = 95 + (i%5)*22;
+    const tw = 28 + (i%3)*8;
+    const treeCol = i%3===0 ? "#0d3018" : i%3===1 ? "#0a2812" : "#112a10";
+    ctx.fillStyle = treeCol;
+    ctx.shadowColor = "#113322"; ctx.shadowBlur = 6;
+    // Double-triangle pine shape
     ctx.beginPath();
-    ctx.moveTo(tx, GROUND - th);
-    ctx.lineTo(tx - tw, GROUND - th*0.25);
-    ctx.lineTo(tx + tw, GROUND - th*0.25);
+    ctx.moveTo(tx + tw*0.5, GROUND - th);
+    ctx.lineTo(tx,          GROUND - th*0.48);
+    ctx.lineTo(tx + tw,     GROUND - th*0.48);
     ctx.closePath(); ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(tx, GROUND - th*0.7);
-    ctx.lineTo(tx - tw*1.15, GROUND - th*0.08);
-    ctx.lineTo(tx + tw*1.15, GROUND - th*0.08);
+    ctx.moveTo(tx + tw*0.5, GROUND - th*0.62);
+    ctx.lineTo(tx - 6,      GROUND - th*0.18);
+    ctx.lineTo(tx + tw + 6, GROUND - th*0.18);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(tx + tw*0.5, GROUND - th*0.3);
+    ctx.lineTo(tx - 4,      GROUND - th*0.02);
+    ctx.lineTo(tx + tw + 4, GROUND - th*0.02);
     ctx.closePath(); ctx.fill();
     // Trunk
-    ctx.fillRect(tx - 4, GROUND - th*0.08, 8, th*0.08);
+    ctx.fillStyle = "#0a1a0a";
+    ctx.fillRect(tx + tw*0.5 - 3, GROUND - th*0.02, 6, th*0.02 + 4);
   }
-  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+  ctx.restore();
 
-  // ── Foreground large trees (left + right) ──
-  [[0, GROUND - 10, -1], [CW, GROUND - 10, 1]].forEach(([bx, by, side]) => {
-    for (let t = 0; t < 3; t++) {
-      const tx = bx + side * (t * 44 + 22);
-      const th = 200 - t * 40;
-      const tw = 35 - t * 6;
-      ctx.globalAlpha = 0.85 - t * 0.18;
-      ctx.fillStyle = "#040208";
-      // Pine layers
-      [0.95, 0.65, 0.38].forEach((yfrac, li) => {
-        const layerW = tw * (1.4 - li*0.25) * (1 + t*0.1);
+  // ── LARGE FOREGROUND TREES — thick, dark, detailed ──
+  [[0,-1],[CW,1]].forEach(([edgeX, side]) => {
+    for (let t = 0; t < 4; t++) {
+      const tx = edgeX - side*(t*50 + 10);
+      const th = 220 - t*35;
+      const tw = 42 - t*7;
+      const alpha = 0.92 - t*0.12;
+      ctx.save(); ctx.globalAlpha = alpha;
+      // Trunk — twisted brown-black
+      ctx.strokeStyle = t===0 ? "#1a0f08" : "#120a05";
+      ctx.lineWidth = 22 - t*4; ctx.lineCap = "round";
+      ctx.shadowColor = "#000"; ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(tx, GROUND+2);
+      ctx.quadraticCurveTo(tx + side*18, GROUND - th*0.45, tx + side*8, GROUND - th);
+      ctx.stroke();
+      // Bark texture lines
+      ctx.strokeStyle = "rgba(80,40,10,0.25)"; ctx.lineWidth = 2; ctx.shadowBlur = 0;
+      for (let b=0; b<3; b++) {
         ctx.beginPath();
-        ctx.moveTo(tx, by - th * yfrac - 18);
-        ctx.lineTo(tx - side * layerW, by - th * (yfrac - 0.35));
-        ctx.lineTo(tx + side * layerW * 0.3, by - th * (yfrac - 0.35));
+        ctx.moveTo(tx + side*b*4, GROUND - th*0.1 - b*40);
+        ctx.lineTo(tx + side*(b*4+8), GROUND - th*0.25 - b*40);
+        ctx.stroke();
+      }
+      // Pine canopy layers — green-dark visible
+      [1.0, 0.68, 0.42, 0.22].forEach((yf, li) => {
+        const lw = (tw + li*8) * (1.3 - li*0.15);
+        const ly  = GROUND - th * yf;
+        const col = li===0 ? "#0e2a12" : li===1 ? "#112e14" : li===2 ? "#143318" : "#1a3d1c";
+        ctx.fillStyle = col; ctx.shadowColor = "#000"; ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(tx + side*8, ly - 22);
+        ctx.lineTo(tx + side*8 - lw, ly + 28);
+        ctx.lineTo(tx + side*8 + lw*0.4, ly + 28);
         ctx.closePath(); ctx.fill();
+        // Highlight edge on canopy
+        ctx.globalAlpha = alpha * 0.2;
+        ctx.fillStyle = "#44aa44";
+        ctx.beginPath();
+        ctx.moveTo(tx + side*8 - lw + 4, ly + 8);
+        ctx.lineTo(tx + side*8 - lw * 0.4, ly - 16);
+        ctx.lineTo(tx + side*8 - lw * 0.2, ly + 8);
+        ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = alpha;
       });
-      // Gnarled trunk
-      ctx.strokeStyle = "#070310"; ctx.lineWidth = 14 - t*3; ctx.lineCap = "round";
-      ctx.beginPath(); ctx.moveTo(tx, by);
-      ctx.quadraticCurveTo(tx + side*12, by - th*0.5, tx, by - th); ctx.stroke();
+      ctx.restore();
     }
   });
-  ctx.globalAlpha = 1;
 
-  // ── Hanging creepy vines / roots ──
-  ctx.strokeStyle = "rgba(20,8,30,0.5)"; ctx.lineWidth = 2;
-  for (let i = 0; i < 6; i++) {
-    const vx = 60 + i * 130;
-    const vy = 0;
-    const vlen = 60 + (i%3)*30;
-    const sway = Math.sin(tick*0.015 + i) * 8;
-    ctx.beginPath();
-    ctx.moveTo(vx, vy);
-    ctx.quadraticCurveTo(vx + sway, vy + vlen*0.5, vx + sway*1.4, vy + vlen);
-    ctx.stroke();
-  }
-
-  // ── Floating eerie fireflies / will-o-wisps ──
-  for (let i = 0; i < 12; i++) {
-    const ft = tick * 0.025 + i * 2.1;
-    const fx = 120 + i * 55 + Math.sin(ft + i) * 28;
-    const fy2 = GROUND - 60 - Math.abs(Math.sin(ft*0.7 + i*0.4)) * 80;
-    const fc = i % 3 === 0 ? "#44ff88" : i % 3 === 1 ? "#88aaff" : "#ffdd44";
-    const fa = 0.4 + 0.4*Math.abs(Math.sin(ft*1.2));
-    ctx.globalAlpha = fa;
-    ctx.fillStyle = fc; ctx.shadowColor = fc; ctx.shadowBlur = 10;
-    ctx.beginPath(); ctx.arc(fx, fy2, 2.5, 0, Math.PI*2); ctx.fill();
-    ctx.shadowBlur = 0;
-  }
-  ctx.globalAlpha = 1;
-
-  // ── Sea/wet ground reflections ──
-  const floor = ctx.createLinearGradient(0, GROUND, 0, CH);
-  floor.addColorStop(0, isKO ? "#140808" : "#080818");
-  floor.addColorStop(0.4, isKO ? "#0c0506" : "#050510");
-  floor.addColorStop(1, "#030308");
-  ctx.fillStyle = floor; ctx.fillRect(0, GROUND, CW, CH - GROUND);
-
-  // Wet floor shimmer
-  ctx.globalAlpha = 0.07;
-  for (let i = 0; i < 8; i++) {
-    const rx = (i * 110 + tick * 0.3) % CW;
-    ctx.fillStyle = i%2===0 ? "#334466" : "#224422";
-    ctx.fillRect(rx, GROUND, 80, CH - GROUND);
-  }
-  ctx.globalAlpha = 1;
-
-  // Ground fog wisps low-rolling
-  for (let i = 0; i < 6; i++) {
-    const gx = ((i * 160 + tick * 0.18) % (CW + 180)) - 90;
-    const gg = ctx.createRadialGradient(gx, GROUND + 18, 0, gx, GROUND + 18, 90);
-    gg.addColorStop(0, "rgba(15,8,25,0.5)");
-    gg.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = gg; ctx.globalAlpha = 0.55;
-    ctx.beginPath(); ctx.ellipse(gx, GROUND+18, 100, 22, 0, 0, Math.PI*2); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  // Ground edge line with eerie glow
+  // ── HANGING VINES — visible ropes from tree canopies ──
   ctx.save();
-  ctx.shadowColor = isKO ? "#440011" : "#223344";
-  ctx.shadowBlur = 20;
-  ctx.strokeStyle = isKO ? "#331122" : "#1a2a3a";
+  for (let i = 0; i < 5; i++) {
+    const vx = 65 + i * 148;
+    const vlen = 55 + (i%3)*35;
+    const sway = Math.sin(tick*0.012 + i*1.4) * 10;
+    ctx.strokeStyle = `rgba(20,55,15,${0.55 + i%2*0.15})`;
+    ctx.lineWidth = 2.5; ctx.lineCap = "round";
+    ctx.shadowColor = "#113300"; ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.moveTo(vx, 0);
+    ctx.quadraticCurveTo(vx + sway, vlen*0.5, vx + sway*1.5, vlen);
+    ctx.stroke();
+    // Leaves on vine
+    for (let l=0; l<3; l++) {
+      const lp = 0.25 + l*0.3;
+      const lx = vx + sway*lp*1.5;
+      const ly = vlen * lp;
+      ctx.fillStyle = "#1a4a18"; ctx.shadowColor = "#113300"; ctx.shadowBlur = 5;
+      ctx.beginPath(); ctx.ellipse(lx+6, ly, 7, 4, -0.5*side||0.4, 0, Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.shadowBlur = 0; ctx.restore();
+
+  // ── FIREFLIES — bright glowing, clearly visible ──
+  for (let i = 0; i < 16; i++) {
+    const ft  = tick * 0.022 + i * 2.0;
+    const fx  = 80 + i * 48 + Math.sin(ft + i*0.8) * 32;
+    const ffy = GROUND - 40 - Math.abs(Math.sin(ft*0.65 + i*0.5)) * 100;
+    const fc  = i%4===0 ? "#66ff88" : i%4===1 ? "#aaccff" : i%4===2 ? "#ffee66" : "#88ffcc";
+    const fa  = 0.55 + 0.45*Math.abs(Math.sin(ft*1.1));
+    ctx.save();
+    ctx.globalAlpha = fa;
+    ctx.fillStyle = fc; ctx.shadowColor = fc; ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(fx, ffy, 3, 0, Math.PI*2); ctx.fill();
+    // Glow trail
+    ctx.globalAlpha = fa * 0.3;
+    ctx.beginPath(); ctx.arc(fx, ffy, 7, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+
+  // ── MIST at ground level — visible green-grey ──
+  for (let i = 0; i < 7; i++) {
+    const mx = ((i*155 + tick*0.15) % (CW+200)) - 100;
+    const mg2 = ctx.createRadialGradient(mx, GROUND-8, 0, mx, GROUND-8, 110+i*18);
+    mg2.addColorStop(0,   isKO ? "rgba(60,10,10,0.38)" : "rgba(20,45,25,0.38)");
+    mg2.addColorStop(0.6, isKO ? "rgba(40,5,5,0.15)"  : "rgba(12,30,18,0.15)");
+    mg2.addColorStop(1,   "rgba(0,0,0,0)");
+    ctx.fillStyle = mg2; ctx.globalAlpha = 0.8;
+    ctx.beginPath(); ctx.ellipse(mx, GROUND-8, 120+i*14, 28, 0, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // ── FLOOR ──
+  const floorG = ctx.createLinearGradient(0, GROUND, 0, CH);
+  floorG.addColorStop(0,   isKO ? "#1c0808" : "#0c1a10");
+  floorG.addColorStop(0.5, isKO ? "#110505" : "#080f0a");
+  floorG.addColorStop(1,   "#05080a");
+  ctx.fillStyle = floorG; ctx.fillRect(0, GROUND, CW, CH-GROUND);
+
+  // Wet ground reflection ripples
+  for (let i = 0; i < 6; i++) {
+    const rx = (i*130 + tick*0.25) % CW;
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = isKO ? "#552211" : "#224433";
+    ctx.fillRect(rx, GROUND, 70, CH-GROUND);
+  }
+  ctx.globalAlpha = 1;
+
+  // Ground line — glowing
+  ctx.save();
+  ctx.shadowColor = isKO ? "#661122" : "#224422";
+  ctx.shadowBlur = 22;
+  ctx.strokeStyle = isKO ? "#442211" : "#1a3a1a";
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(0, GROUND); ctx.lineTo(CW, GROUND); ctx.stroke();
   ctx.restore();
 
-  // ── Lightning flash on KO ──
-  if (isKO && Math.floor(tick / 18) % 7 === 0) {
-    ctx.globalAlpha = 0.06;
+  // ── LIGHTNING FLASH on KO ──
+  if (isKO && Math.floor(tick/20) % 8 === 0) {
+    ctx.globalAlpha = 0.09;
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, CW, CH);
     ctx.globalAlpha = 1;
+    // Lightning bolt
+    if (Math.floor(tick/20) % 16 === 0) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,180,0.7)"; ctx.lineWidth = 2; ctx.shadowColor="#ffffaa"; ctx.shadowBlur=18;
+      const lx = 200 + Math.random()*400;
+      ctx.beginPath(); ctx.moveTo(lx,0);
+      ctx.lineTo(lx-15, 50); ctx.lineTo(lx+8, 80); ctx.lineTo(lx-10, 130); ctx.stroke();
+      ctx.restore();
+    }
   }
 
-  // ── Subtle CRT grain ──
-  ctx.globalAlpha = 0.025;
-  for (let sy = 0; sy < CH; sy += 3) { ctx.fillStyle="#000"; ctx.fillRect(0, sy, CW, 1.5); }
+  // ── CRT grain overlay ──
+  ctx.globalAlpha = 0.022;
+  for (let sy=0; sy<CH; sy+=3) { ctx.fillStyle="#000"; ctx.fillRect(0,sy,CW,1.5); }
   ctx.globalAlpha = 1;
 }
 
