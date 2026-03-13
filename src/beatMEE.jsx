@@ -889,7 +889,7 @@ function drawBG(ctx, tick, gs) {
       const lx = vx + sway*lp*1.5;
       const ly = vlen * lp;
       ctx.fillStyle = "#1a4a18"; ctx.shadowColor = "#113300"; ctx.shadowBlur = 5;
-      ctx.beginPath(); ctx.ellipse(lx+6, ly, 7, 4, -0.5*side||0.4, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(lx+6, ly, 7, 4, 0.4, 0, Math.PI*2); ctx.fill();
     }
   }
   ctx.shadowBlur = 0; ctx.restore();
