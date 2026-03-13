@@ -556,9 +556,9 @@ function updateGS(gs, keys) {
   // ── Camera zoom: get closer when fighters are near ──
   if (gs.phase === "fight" || gs.phase === "ko") {
     const fdist = Math.abs(player.x - cpu.x);
-    gs.cameraZoomTarget = fdist < 110 ? 1.12 : fdist < 160 ? 1.06 : 1.0;
-    gs.cameraZoom += (gs.cameraZoomTarget - gs.cameraZoom) * 0.05;
-    gs.cameraZoom = Math.min(1.18, Math.max(0.98, gs.cameraZoom));
+    gs.cameraZoomTarget = 0.82; // fixed zoom-out — no dynamic zoom-in
+    gs.cameraZoom += (gs.cameraZoomTarget - gs.cameraZoom) * 0.08;
+    gs.cameraZoom = Math.min(0.84, Math.max(0.80, gs.cameraZoom));
   }
 
   // ── Tick damage numbers ──
@@ -1705,6 +1705,12 @@ export default function BeatMEE() {
       const ctx = canvas.getContext("2d");
       updateGS(gs, keysRef.current);
       const { fighters: [f1, f2], particles, announce, phase: gph, tick, timer, round, wins, cdVal, cdFrames, flashFrames } = gs;
+      // ── Camera zoom transform (zoomed out) ──
+      const zoom = gs.cameraZoom || 0.82;
+      ctx.save();
+      ctx.translate(CW * (1 - zoom) / 2, CH * (1 - zoom) * 0.72);
+      ctx.scale(zoom, zoom);
+
       drawBG(ctx, tick, gs);
 
       // Screen flash on hit
@@ -1740,6 +1746,8 @@ export default function BeatMEE() {
           ctx.restore();
         });
       }
+      ctx.restore(); // end camera zoom
+
       drawHUD(ctx, f1, f2, timer, round, wins);
       drawControls(ctx, f1.name);
       if (gph === "countdown") {
@@ -1817,7 +1825,7 @@ export default function BeatMEE() {
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                   minHeight: "100vh", minHeight: "100dvh", background: "#02020a", fontFamily: F,
                   padding: 0, margin: 0, boxSizing: "border-box", overflow: "hidden" }}>
-      <div style={{ position: "relative", width: "100%", maxWidth: `${CW}px`,
+      <div style={{ position: "relative", width: "100%", maxWidth: "88%",
                     aspectRatio: "16/9", flexShrink: 0 }}>
 
         <canvas ref={canvasRef} width={CW} height={CH}
