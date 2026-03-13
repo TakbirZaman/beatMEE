@@ -16,7 +16,7 @@ const ATK = {
   special:  { dmg: 22, rng: 115, dur: 40, kb: 11,  startup: 13, active: 10, stun: 34 },
   airpunch: { dmg: 11, rng: 80,  dur: 20, kb: 5,   startup: 4,  active: 8,  stun: 16 },
   airkick:  { dmg: 17, rng: 95,  dur: 28, kb: 8,   startup: 6,  active: 9,  stun: 24 },
-  heavykick: { dmg: 28, rng: 105, dur: 38, kb: 12,  startup: 14, active: 8,  stun: 32 },
+  blitz:     { dmg: 24, rng: 118, dur: 34, kb: 10,  startup: 8,  active: 10, stun: 28 },
   super:    { dmg: 45, rng: 130, dur: 55, kb: 16,  startup: 18, active: 12, stun: 45 },
   finisher: { dmg: 70, rng: 140, dur: 65, kb: 22,  startup: 22, active: 14, stun: 60 },
 };
@@ -26,7 +26,7 @@ const DIFFICULTY = {
   easy:      { thinkMin: 22, thinkMax: 40, blockChance: 0.15, attackChance: 0.28, superChance: 0.00, aggression: 0.3 },
   semipro:   { thinkMin: 12, thinkMax: 24, blockChance: 0.50, attackChance: 0.58, superChance: 0.25, aggression: 0.6 },
   pro:       { thinkMin: 5,  thinkMax: 12, blockChance: 0.75, attackChance: 0.80, superChance: 0.55, aggression: 0.8 },
-  legendary: { thinkMin: 1,  thinkMax: 1,  blockChance: 1.00, attackChance: 0.99, superChance: 0.99, aggression: 1.0 },
+  legendary: { thinkMin: 1,  thinkMax: 1,  blockChance: 0.88, attackChance: 0.95, superChance: 0.90, aggression: 1.0 },
 };
 
 const SUPER_MAX        = 100;
@@ -40,7 +40,7 @@ const COMBO_TICKS = 55;
 // ── Single player bindings ──
 const PK = {
   left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp",
-  punch: "KeyA", dash: "KeyS",  special: "KeyD", block: "ArrowDown", heavykick: "KeyF",
+  punch: "KeyA", dash: "KeyS",  special: "KeyD", block: "ArrowDown", blitz: "KeyF",
   altUp: "KeyW", taunt: "KeyT",
 };
 const GAME_KEYS = new Set([
@@ -223,7 +223,7 @@ function updateCPU(gs) {
     if (dist < 120 && onGround) {
       const roll = Math.random();
       dec.attack = roll < 0.30 ? "special"
-                 : roll < 0.55 ? "heavykick"
+                 : roll < 0.55 ? "blitz"
                  : roll < 0.75 ? "dash"
                  : roll < 0.88 ? "punch"
                  : "special";
@@ -254,7 +254,7 @@ function updateCPU(gs) {
   // Attack in range
   if (dist < 115 && onGround && Math.random() < adaptedAttack) {
     const roll = Math.random();
-    dec.attack = roll < 0.40 ? "punch" : roll < 0.65 ? "dash" : roll < 0.85 ? "special" : "heavykick";
+    dec.attack = roll < 0.40 ? "punch" : roll < 0.65 ? "dash" : roll < 0.85 ? "special" : "blitz";
     return;
   }
   dec.move    = dist < 60 ? -Math.sign(dx) * (Math.random() < 0.5 ? 1 : 0) : Math.sign(dx) * (Math.random() < 0.7 ? 1 : 0);
@@ -278,7 +278,7 @@ function applyCPUDecision(gs) {
 
   const diffCfg = DIFFICULTY[gs.difficulty] || DIFFICULTY.easy;
   const agg = diffCfg.aggression || 0.5;
-  const legBoost = gs.difficulty === "legendary" ? 1.62 : 1.0;
+  const legBoost = gs.difficulty === "legendary" ? 1.45 : 1.0;
   cpu.vx = dec.move !== 0 ? dec.move * WALK_SPD * (0.75 + agg * 0.4) * legBoost : cpu.vx * 0.65;
   if (dec.jumping && onGround) cpu.vy = JUMP_VY;
   cpu.state = !onGround ? "jump" : Math.abs(cpu.vx) > 0.6 ? "walk" : "idle";
@@ -351,9 +351,9 @@ function updatePlayer(f, keys) {
   }
 
   // ── Ground attacks ──
-  const pHK = keys.has(PK.heavykick);
+  const pHK = keys.has(PK.blitz);
   if      (f.state !== "attack" && pS && onGround) doAttack(f, "special");
-  else if (f.state !== "attack" && pHK && onGround) doAttack(f, "heavykick");
+  else if (f.state !== "attack" && pHK && onGround) doAttack(f, "blitz");
   else if (f.state !== "attack" && pK && onGround) doAttack(f, "dash");
   else if (f.state !== "attack" && pP && onGround) doAttack(f, "punch");
 
@@ -418,7 +418,7 @@ function testHit(gs, atk, def) {
   def.lastHitTick = now;
 
   const rageMulti  = atk.hp <= 25 ? 1.15 : 1.0;
-  const legDmgBoost = gs && gs.difficulty === 'legendary' && atk === gs.fighters[1] ? 1.22 : 1.0;
+  const legDmgBoost = gs && gs.difficulty === 'legendary' && atk === gs.fighters[1] ? 1.10 : 1.0;
   const tauntBonus = atk.tauntCooldown >= 30 && atk.tauntCooldown < 150 ? 1.20 : 1.0; // bonus only after recent taunt
   const comboBonus = atk.comboCount >= 3 ? 1.35 : atk.comboCount >= 2 ? 1.18 : 1;
   const isCrit     = Math.random() < (atk.hp <= 30 ? 0.16 : 0.08); // rage = higher crit chance
@@ -1267,19 +1267,43 @@ function drawFighter(ctx, f, tick) {
       ctx.restore();
 
     // ── HEAVY KICK: rising heel slam ────────────────────────
-    } else if (attackType === "heavykick") {
-      const reach = swing * 72;
-      const atkY  = fy - FH * 0.55 - swing * 22;
-      ctx.strokeStyle = color; ctx.lineWidth = 13; ctx.shadowColor = color; ctx.shadowBlur = 28;
-      ctx.beginPath(); ctx.moveTo(x + dir * FW * 0.28, fy - FH * 0.28);
-      ctx.quadraticCurveTo(x + dir * (FW * 0.5 + reach * 0.4), fy - FH * 0.45, x + dir * (FW * 0.36 + reach), atkY); ctx.stroke();
-      // Boot tip glow
-      ctx.beginPath(); ctx.arc(x + dir * (FW * 0.36 + reach), atkY, 13, 0, Math.PI * 2);
-      ctx.fillStyle = color; ctx.shadowBlur = 30; ctx.fill();
-      // Energy trail
-      if (swing > 0.3) {
-        ctx.beginPath(); ctx.arc(x + dir * (FW * 0.36 + reach), atkY, 22, 0, Math.PI * 2);
-        ctx.strokeStyle = rgba(color, 0.25); ctx.lineWidth = 6; ctx.shadowBlur = 18; ctx.stroke();
+    } else if (attackType === "blitz") {
+      // Teleport Slam: fighter flickers and a shockwave erupts from above
+      const phase2 = Math.min(progress * 1.4, 1);
+      // Ghost afterimage trail
+      for (let gi = 0; gi < 3; gi++) {
+        const gx = x + dir * gi * 18;
+        ctx.save();
+        ctx.globalAlpha = (0.3 - gi * 0.08) * Math.max(0, 1 - phase2 * 1.5);
+        ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 12;
+        ctx.beginPath(); ctx.ellipse(gx, fy - FH*0.55, 12, 22, 0, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+      // Slam shockwave ring at target
+      if (swing > 0.4) {
+        const slamX = x + dir * (FW * 0.36 + swing * 90);
+        const slamY = fy - FH * 0.3;
+        const ringR  = swing * 38;
+        // Impact ring
+        ctx.beginPath(); ctx.arc(slamX, slamY, ringR, 0, Math.PI*2);
+        ctx.strokeStyle = color; ctx.lineWidth = 5 * (1-swing+0.2); ctx.shadowColor = color; ctx.shadowBlur = 30;
+        ctx.globalAlpha = (1 - swing) * 1.8;
+        ctx.stroke();
+        // Inner bright flash
+        ctx.beginPath(); ctx.arc(slamX, slamY, ringR * 0.4, 0, Math.PI*2);
+        ctx.fillStyle = "#ffffff"; ctx.globalAlpha = swing * 0.6; ctx.shadowBlur = 20; ctx.fill();
+        ctx.globalAlpha = 1;
+        // Energy spikes outward
+        for (let sp = 0; sp < 6; sp++) {
+          const sa = (sp / 6) * Math.PI * 2;
+          ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.globalAlpha = 0.6 * swing;
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.moveTo(slamX + Math.cos(sa)*ringR*0.5, slamY + Math.sin(sa)*ringR*0.5);
+          ctx.lineTo(slamX + Math.cos(sa)*ringR*1.2, slamY + Math.sin(sa)*ringR*1.2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
       }
 
     // ── KICK: big boot sweep ──────────────────────────────────
@@ -1627,7 +1651,7 @@ function TouchControls({ keysRef }) {
             <span style={{ textAlign: "center", lineHeight: 1.2 }}>DA<br/>SH</span>
           </div>
           <div style={atk("255,60,180", 50)} {...mkHandlers("KeyF")}>
-            <span style={{ textAlign: "center", lineHeight: 1.2 }}>HVY<br/>KCK</span>
+            <span style={{ textAlign: "center", lineHeight: 1.2 }}>BLI<br/>TZ</span>
           </div>
         </div>
         {/* SUPER — triggers ↑+D simultaneously */}
