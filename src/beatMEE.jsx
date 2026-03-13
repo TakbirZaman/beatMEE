@@ -119,7 +119,7 @@ function mkParticles(x, y, color, n = 14) {
 // ═══════════════════════════════════════════════════════════════
 // GAME STATE
 // ═══════════════════════════════════════════════════════════════
-function initGS(playerName, difficulty = "medium", playerColor = "#00e5ff") {
+function initGS(playerName, difficulty = "easy", playerColor = "#00e5ff") {
   const pGlow = playerColor;
   return {
     phase: "menu",
@@ -137,7 +137,7 @@ function initGS(playerName, difficulty = "medium", playerColor = "#00e5ff") {
     playerPattern: { punchCount: 0, blockCount: 0, stayFarCount: 0, lastPlayerAtk: null },
     hitStopFrames: 0,
     slowMotionFrames: 0,
-    cameraZoom: 1.0, cameraZoomTarget: 1.0,
+    cameraZoom: 0.72, cameraZoomTarget: 0.72,
     clashParticles: [],
     finishHimShown: false,
     cinematicKO: false, cinematicKOTimer: 0,
@@ -161,13 +161,14 @@ function beginRound(gs) {
   gs.flashFrames = 0; gs.shakeFrames = 0; gs.shakeIntensity = 0;
   gs.playerPattern = { punchCount: 0, blockCount: 0, stayFarCount: 0, lastPlayerAtk: null };
   gs.hitStopFrames = 0; gs.slowMotionFrames = 0;
-  gs.cameraZoom = 1.0; gs.cameraZoomTarget = 1.0;
+  gs.cameraZoom = 0.72; gs.cameraZoomTarget = 0.72;
   gs.clashParticles = []; gs.finishHimShown = false;
   gs.cinematicKO = false; gs.cinematicKOTimer = 0;
   gs.playerBehavior = { punchCount: 0, blockCount: 0, jumpCount: 0, lastActionTick: 0 };
   gs.cpuDecision = { move: 0, blocking: false, jumping: false, attack: null };
   gs.cpuThinkCd  = 0;
   gs.crowdReactions = [];
+  gs.koRings = [];
   gs.playerTookDamage = false;
   gs.cpuTauntCd = 0;
 }
@@ -190,7 +191,7 @@ function updateCPU(gs) {
   const player = gs.fighters[0];
   if (cpu.state === "ko" || cpu.state === "hit" || cpu.state === "attack") return;
 
-  const diff = DIFFICULTY[gs.difficulty] || DIFFICULTY.medium;
+  const diff = DIFFICULTY[gs.difficulty] || DIFFICULTY.easy;
   gs.cpuThinkCd--;
   if (gs.cpuThinkCd > 0) return;
   gs.cpuThinkCd = diff.thinkMin + Math.floor(Math.random() * (diff.thinkMax - diff.thinkMin));
@@ -253,7 +254,7 @@ function updateCPU(gs) {
   // Attack in range
   if (dist < 115 && onGround && Math.random() < adaptedAttack) {
     const roll = Math.random();
-    dec.attack = roll < 0.50 ? "punch" : roll < 0.78 ? "dash" : "special";
+    dec.attack = roll < 0.40 ? "punch" : roll < 0.65 ? "dash" : roll < 0.85 ? "special" : "heavykick";
     return;
   }
   dec.move    = dist < 60 ? -Math.sign(dx) * (Math.random() < 0.5 ? 1 : 0) : Math.sign(dx) * (Math.random() < 0.7 ? 1 : 0);
@@ -418,7 +419,7 @@ function testHit(gs, atk, def) {
 
   const rageMulti  = atk.hp <= 25 ? 1.15 : 1.0;
   const legDmgBoost = gs && gs.difficulty === 'legendary' && atk === gs.fighters[1] ? 1.22 : 1.0;
-  const tauntBonus = atk.tauntCooldown > 0 && atk.tauntCooldown < 150 ? 1.20 : 1.0; // bonus after taunting
+  const tauntBonus = atk.tauntCooldown >= 30 && atk.tauntCooldown < 150 ? 1.20 : 1.0; // bonus only after recent taunt
   const comboBonus = atk.comboCount >= 3 ? 1.35 : atk.comboCount >= 2 ? 1.18 : 1;
   const isCrit     = Math.random() < (atk.hp <= 30 ? 0.16 : 0.08); // rage = higher crit chance
   const isFinisher = atk.attackType === "finisher";
@@ -556,9 +557,9 @@ function updateGS(gs, keys) {
   // ── Camera zoom: get closer when fighters are near ──
   if (gs.phase === "fight" || gs.phase === "ko") {
     const fdist = Math.abs(player.x - cpu.x);
-    gs.cameraZoomTarget = 0.82; // fixed zoom-out — no dynamic zoom-in
+    gs.cameraZoomTarget = 0.72;
     gs.cameraZoom += (gs.cameraZoomTarget - gs.cameraZoom) * 0.08;
-    gs.cameraZoom = Math.min(0.84, Math.max(0.80, gs.cameraZoom));
+    gs.cameraZoom = Math.min(0.74, Math.max(0.70, gs.cameraZoom));
   }
 
   // ── Tick damage numbers ──
@@ -678,7 +679,7 @@ function updateGS(gs, keys) {
     if (player.hp <= 0) player.state = "ko";
     if (cpu.hp     <= 0) cpu.state = "ko";
     const w = player.hp > 0 ? player : cpu.hp > 0 ? cpu : null;
-    gs.phase = "ko"; gs.cdFrames = 200;
+    gs.phase = "ko"; gs.cdFrames = 180;
     gs.announce = { text: "K.O.!", sub: w ? `${w.name} WINS!` : "DRAW!", ttl: 9999 };
   }
 }
@@ -1706,7 +1707,7 @@ export default function BeatMEE() {
       updateGS(gs, keysRef.current);
       const { fighters: [f1, f2], particles, announce, phase: gph, tick, timer, round, wins, cdVal, cdFrames, flashFrames } = gs;
       // ── Camera zoom transform (zoomed out) ──
-      const zoom = gs.cameraZoom || 0.82;
+      const zoom = gs.cameraZoom || 0.72;
       ctx.save();
       ctx.translate(CW * (1 - zoom) / 2, CH * (1 - zoom) * 0.72);
       ctx.scale(zoom, zoom);
