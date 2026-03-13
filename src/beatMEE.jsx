@@ -555,8 +555,7 @@ function updateGS(gs, keys) {
   const [player, cpu] = gs.fighters;
 
   // ── Camera zoom: get closer when fighters are near ──
-  if (gs.phase === "fight" || gs.phase === "ko") {
-    const fdist = Math.abs(player.x - cpu.x);
+  if (gs.phase === "fight" || gs.phase === "ko" || gs.phase === "countdown") {
     gs.cameraZoomTarget = 0.72;
     gs.cameraZoom += (gs.cameraZoomTarget - gs.cameraZoom) * 0.08;
     gs.cameraZoom = Math.min(0.74, Math.max(0.70, gs.cameraZoom));
@@ -1039,7 +1038,9 @@ function drawFighter(ctx, f, tick) {
       ctx.textAlign = "center";
       ctx.fillText(i%2===0 ? "💀" : "⭐", x + Math.cos(a2)*28, fy - FH*0.78 + Math.sin(a2)*10);
     }
-    ctx.restore(); return;
+    ctx.restore(); // inner KO save
+    ctx.restore(); // outer fighter save
+    return;
   }
 
   // ── ENERGY AURA (low hp) ─────────────────────────────────────
