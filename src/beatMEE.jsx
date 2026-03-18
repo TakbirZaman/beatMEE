@@ -11,14 +11,14 @@ const WALK_SPD = 4.5;
 const FW = 40, FH = 82;
 
 const ATK = {
-  punch:    { dmg: 8,  rng: 72,  dur: 18, kb: 3.5, startup: 4,  active: 7,  stun: 14 },
-  dash:     { dmg: 18, rng: 100, dur: 28, kb: 8,   startup: 5,  active: 10, stun: 26 },
-  special:  { dmg: 22, rng: 115, dur: 40, kb: 11,  startup: 13, active: 10, stun: 34 },
-  airpunch: { dmg: 11, rng: 80,  dur: 20, kb: 5,   startup: 4,  active: 8,  stun: 16 },
-  airkick:  { dmg: 17, rng: 95,  dur: 28, kb: 8,   startup: 6,  active: 9,  stun: 24 },
-  blitz:     { dmg: 24, rng: 118, dur: 34, kb: 10,  startup: 8,  active: 10, stun: 28 },
-  super:    { dmg: 45, rng: 130, dur: 55, kb: 16,  startup: 18, active: 12, stun: 45 },
-  finisher: { dmg: 70, rng: 140, dur: 65, kb: 22,  startup: 22, active: 14, stun: 60 },
+  punch:    { dmg: 5,  rng: 72,  dur: 18, kb: 3.5, startup: 4,  active: 7,  stun: 14 },
+  dash:     { dmg: 12, rng: 100, dur: 28, kb: 8,   startup: 5,  active: 10, stun: 26 },
+  special:  { dmg: 15, rng: 115, dur: 40, kb: 11,  startup: 13, active: 10, stun: 34 },
+  airpunch: { dmg: 7,  rng: 80,  dur: 20, kb: 5,   startup: 4,  active: 8,  stun: 16 },
+  airkick:  { dmg: 11, rng: 95,  dur: 28, kb: 8,   startup: 6,  active: 9,  stun: 24 },
+  blitz:    { dmg: 16, rng: 118, dur: 34, kb: 10,  startup: 8,  active: 10, stun: 28 },
+  super:    { dmg: 30, rng: 130, dur: 55, kb: 16,  startup: 18, active: 12, stun: 45 },
+  finisher: { dmg: 48, rng: 140, dur: 65, kb: 22,  startup: 22, active: 14, stun: 60 },
 };
 
 // ── CPU difficulty profiles ──
@@ -33,7 +33,7 @@ const SUPER_MAX        = 100;
 const SUPER_FILL_DMG   = 1.8;
 const SUPER_FILL_TAKEN = 2.4;
 
-const ROUND_TIME  = 90;
+const ROUND_TIME  = 150;
 const WINS_NEEDED = 2;
 const COMBO_TICKS = 55;
 
@@ -43,6 +43,11 @@ const PK = {
   punch: "KeyA", dash: "KeyS",  special: "KeyD", block: "ArrowDown", blitz: "KeyF",
   altUp: "KeyW", taunt: "KeyT",
 };
+// ── Multiplayer key encode/decode ──
+const _MP_KEYS = ["ArrowLeft","ArrowRight","ArrowUp","KeyW","KeyA","KeyS","KeyD","ArrowDown","KeyF","KeyT"];
+function encodeKeys(keys) { return _MP_KEYS.reduce((acc,k,i)=>acc|(keys.has(k)?1<<i:0),0); }
+function decodeKeys(bits)  { const s=new Set(); _MP_KEYS.forEach((k,i)=>{if(bits&(1<<i))s.add(k);}); return s; }
+
 const GAME_KEYS = new Set([
   "ArrowLeft","ArrowRight","ArrowUp","ArrowDown",
   "KeyA","KeyS","KeyD","KeyW","KeyT","KeyF",
@@ -540,7 +545,7 @@ function testClash(gs) {
 // ═══════════════════════════════════════════════════════════════
 // MAIN UPDATE
 // ═══════════════════════════════════════════════════════════════
-function updateGS(gs, keys) {
+function updateGS(gs, keys, remoteKeys) {
   // ── Hit stop: freeze everything ──
   if (gs.hitStopFrames > 0) { gs.hitStopFrames--; return; }
 
@@ -633,20 +638,24 @@ function updateGS(gs, keys) {
     }
   }
 
-  updatePlayer(player, keys);
-
-  // ── CPU auto-taunts ──
-  if (gs.cpuTauntCd > 0) gs.cpuTauntCd--;
-  if (gs.cpuTauntCd <= 0 && cpu.state === "idle" && Math.random() < 0.004) {
-    const cpuTaunts = ["You're pathetic!","Come on!","Is that it?","Too easy!","Embarrassing.","I'm bored.","Try harder."];
-    cpu.personality = cpuTaunts[Math.floor(Math.random() * cpuTaunts.length)];
-    cpu.personalityTimer = 70;
-    gs.cpuTauntCd = 240;
+  if (gs.multiMode === "host" || gs.multiMode === "guest") {
+    // fighters[0] is always local player, fighters[1] is always remote player
+    updatePlayer(player, keys);
+    updatePlayer(cpu, remoteKeys || new Set());
+  } else {
+    updatePlayer(player, keys);
+    // ── CPU auto-taunts ──
+    if (gs.cpuTauntCd > 0) gs.cpuTauntCd--;
+    if (gs.cpuTauntCd <= 0 && cpu.state === "idle" && Math.random() < 0.004) {
+      const cpuTaunts = ["You're pathetic!","Come on!","Is that it?","Too easy!","Embarrassing.","I'm bored.","Try harder."];
+      cpu.personality = cpuTaunts[Math.floor(Math.random() * cpuTaunts.length)];
+      cpu.personalityTimer = 70;
+      gs.cpuTauntCd = 240;
+    }
+    if      (cpu.state === "hit")    { cpu.stateTimer = Math.max(0, cpu.stateTimer - 1); cpu.animTick++; if (cpu.stateTimer <= 0) cpu.state = "idle"; cpu.vx *= 0.75; applyPhysics(cpu); }
+    else if (cpu.state === "attack") { tickCPUAttack(cpu); applyPhysics(cpu); updateCPU(gs); }
+    else                             { updateCPU(gs); applyCPUDecision(gs); }
   }
-
-  if      (cpu.state === "hit")    { cpu.stateTimer = Math.max(0, cpu.stateTimer - 1); cpu.animTick++; if (cpu.stateTimer <= 0) cpu.state = "idle"; cpu.vx *= 0.75; applyPhysics(cpu); }
-  else if (cpu.state === "attack") { tickCPUAttack(cpu); applyPhysics(cpu); updateCPU(gs); }
-  else                             { updateCPU(gs); applyCPUDecision(gs); }
 
   if (player.state !== "ko" && cpu.state !== "ko") {
     if (player.x < cpu.x) { player.facing = 1; cpu.facing = -1; }
@@ -661,8 +670,8 @@ function updateGS(gs, keys) {
   if (gs.flashFrames > 0) gs.flashFrames--;
   if (gs.shakeFrames > 0) gs.shakeFrames--;
 
-  // ── FINISH HIM: show prompt when enemy HP < 10 ──
-  if (cpu.hp > 0 && cpu.hp <= 10 && !gs.finishHimShown && player.superMeter >= SUPER_MAX * 0.5) {
+  // ── FINISH HIM: show prompt only in single player ──
+  if (!gs.multiMode && cpu.hp > 0 && cpu.hp <= 10 && !gs.finishHimShown && player.superMeter >= SUPER_MAX * 0.5) {
     gs.finishHimShown = true;
     gs.announce = { text: "FINISH HIM!", sub: "↑+A+D for FINISHER", ttl: 120 };
   }
@@ -1682,20 +1691,29 @@ function TouchControls({ keysRef }) {
 // ROOT COMPONENT
 // ═══════════════════════════════════════════════════════════════
 export default function BeatMEE() {
-  const canvasRef   = useRef(null);
-  const gsRef       = useRef(null);
-  const keysRef     = useRef(new Set());
-  const rafRef      = useRef(null);
+  const canvasRef      = useRef(null);
+  const gsRef          = useRef(null);
+  const keysRef        = useRef(new Set());
+  const rafRef         = useRef(null);
+  const inviteTimerRef = useRef(null); // countdown timer ref for cleanup
+  const peerRef        = useRef(null);
+  const connRef        = useRef(null);
+  const remoteKeysRef  = useRef(new Set());
 
-  const [uiPhase,    setUiPhase]    = useState("enter_name");
-  const [playerName, setPlayerName] = useState("");
-  const [nameError,  setNameError]  = useState("");
-  const [difficulty, setDifficulty] = useState("easy");
-  const [results,    setResults]    = useState(null);
-  const [focused,    setFocused]    = useState(false);
-  const [winStreak,  setWinStreak]  = useState(0);
+  const [uiPhase,      setUiPhase]      = useState("enter_name");
+  const [playerName,   setPlayerName]   = useState("");
+  const [nameError,    setNameError]    = useState("");
+  const [difficulty,   setDifficulty]   = useState("easy");
+  const [results,      setResults]      = useState(null);
+  const [focused,      setFocused]      = useState(false);
+  const [winStreak,    setWinStreak]    = useState(0);
   const [matchHistory, setMatchHistory] = useState([]);
   const [playerColor2, setPlayerColor2] = useState("#00e5ff");
+  const [multiMode,    setMultiMode]    = useState(null);       // null | "host" | "guest"
+  const [roomId,       setRoomId]       = useState("");
+  const [inviteTimer,  setInviteTimer]  = useState(60);
+  const [mpStatus,     setMpStatus]     = useState("");         // status message
+  const [guestName,    setGuestName]    = useState("PLAYER 2");
 
   // Idle BG animation on non-game screens
   useEffect(() => {
@@ -1718,6 +1736,185 @@ export default function BeatMEE() {
     return () => cancelAnimationFrame(raf);
   }, [uiPhase]);
 
+  // ── Detect invite link on page load ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const room = params.get("room");
+    if (room) {
+      setRoomId(room);
+      setMultiMode("guest");
+      setUiPhase("mp_join");
+    }
+  }, []);
+
+  // ── Cleanup peer + timer on unmount ──
+  useEffect(() => {
+    return () => {
+      if (inviteTimerRef.current) clearInterval(inviteTimerRef.current);
+      if (peerRef.current) { try { peerRef.current.destroy(); } catch(e){} }
+    };
+  }, []);
+
+  // ── Multiplayer: host creates room ──
+  function handleHostInvite() {
+    const name = playerName.trim();
+    if (!name) { setNameError("Enter your fighter name first!"); return; }
+    setNameError("");
+    const id = "beatmee-" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    setRoomId(id);
+    setMultiMode("host");
+    setMpStatus("Waiting for friend to join...");
+    setInviteTimer(60);
+    setUiPhase("mp_invite");
+
+    const initPeer = () => {
+      // Destroy any existing peer first
+      try { if (peerRef.current) peerRef.current.destroy(); } catch(e){}
+      const peer = new window.Peer(id, { debug: 0 });
+      peerRef.current = peer;
+
+      // Countdown timer — stored in ref so Back button can clear it
+      let countdown = 60;
+      if (inviteTimerRef.current) clearInterval(inviteTimerRef.current);
+      inviteTimerRef.current = setInterval(() => {
+        countdown--;
+        setInviteTimer(countdown);
+        if (countdown <= 0) {
+          clearInterval(inviteTimerRef.current);
+          inviteTimerRef.current = null;
+          try { peer.destroy(); } catch(e){}
+          setMpStatus("⏰ Link expired. Go back and try again.");
+          setUiPhase("mp_expired");
+        }
+      }, 1000);
+
+      peer.on("connection", (conn) => {
+        // Stop the expiry timer as soon as someone connects
+        clearInterval(inviteTimerRef.current);
+        inviteTimerRef.current = null;
+        connRef.current = conn;
+
+        // Set up data handler BEFORE opening (avoids data race with guest's ready msg)
+        conn.on("data", (data) => {
+          if (data.type === "keys") {
+            remoteKeysRef.current = decodeKeys(data.bits);
+          }
+          if (data.type === "ready") {
+            const gName   = (data.name  || "PLAYER 2").toUpperCase().slice(0,12);
+            const gColor  = data.color  || "#ff4040";
+            setGuestName(gName);
+            setMpStatus("🟢 " + gName + " connected! Starting...");
+            // Reply with host info, then start after brief delay for UI feedback
+            conn.send({ type: "go", hostName: name.toUpperCase(), hostColor: playerColor2 });
+            setTimeout(() => startMultiGame("host", name.toUpperCase(), gName, playerColor2, gColor, conn), 500);
+          }
+        });
+
+        conn.on("open", () => {
+          setMpStatus("🟢 Friend connected!");
+          // Send ack so guest knows connection is live
+          conn.send({ type: "ack" });
+        });
+        conn.on("close", () => setMpStatus("❌ Friend disconnected."));
+        conn.on("error", () => setMpStatus("❌ Connection error."));
+      });
+
+      peer.on("error", (err) => {
+        setMpStatus("❌ Could not create room: " + err.type);
+      });
+    };
+
+    if (window.Peer) { initPeer(); }
+    else {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js";
+      script.onload = initPeer;
+      script.onerror = () => setMpStatus("❌ Failed to load PeerJS. Check your connection.");
+      document.head.appendChild(script);
+    }
+  }
+
+  // ── Multiplayer: guest joins room ──
+  function handleGuestJoin() {
+    const name = playerName.trim();
+    if (!name) { setNameError("Enter your name first!"); return; }
+    setNameError("");
+    setMpStatus("Connecting to room...");
+
+    const initGuestPeer = () => {
+      try { if (peerRef.current) peerRef.current.destroy(); } catch(e){}
+      const peer = new window.Peer(undefined, { debug: 0 });
+      peerRef.current = peer;
+
+      peer.on("open", () => {
+        // No reliable:true — deprecated in PeerJS v1.5
+        const conn = peer.connect(roomId);
+        connRef.current = conn;
+
+        // Set up data handler immediately before open fires (fixes data race)
+        conn.on("data", (data) => {
+          if (data.type === "keys") {
+            remoteKeysRef.current = decodeKeys(data.bits);
+          }
+          if (data.type === "ack") {
+            setMpStatus("🟢 Connected! Sending name...");
+            // Now safe to send ready — host data handler is already attached
+            conn.send({ type: "ready", name: name.toUpperCase(), color: playerColor2 });
+          }
+          if (data.type === "go") {
+            const hName  = (data.hostName  || "HOST").toUpperCase().slice(0,12);
+            const hColor = data.hostColor  || "#00e5ff";
+            setMpStatus("🟢 Starting fight!");
+            startMultiGame("guest", hName, name.toUpperCase(), hColor, playerColor2, conn);
+          }
+        });
+
+        conn.on("open", () => {
+          setMpStatus("🟢 Reached host — waiting for ack...");
+        });
+        conn.on("close", () => setMpStatus("❌ Host disconnected."));
+        conn.on("error", () => setMpStatus("❌ Connection error."));
+
+        // 18s connection timeout
+        setTimeout(() => {
+          if (!connRef.current?.open) setMpStatus("❌ Could not connect. Link may be expired.");
+        }, 18000);
+      });
+
+      peer.on("error", (err) => setMpStatus("❌ Peer error: " + err.type));
+    };
+
+    if (window.Peer) { initGuestPeer(); }
+    else {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js";
+      script.onload = initGuestPeer;
+      script.onerror = () => setMpStatus("❌ Failed to load PeerJS.");
+      document.head.appendChild(script);
+    }
+  }
+
+  // ── Start multiplayer game ──
+  // mode: "host"|"guest", localPlayer is always fighters[0], remote is fighters[1]
+  function startMultiGame(mode, hostName, guestNameVal, hostColor, guestColor, conn) {
+    const localName  = mode === "host" ? hostName    : guestNameVal;
+    const remoteName = mode === "host" ? guestNameVal : hostName;
+    const localCol   = mode === "host" ? hostColor   : guestColor;
+    const remoteCol  = mode === "host" ? guestColor  : hostColor;
+    remoteKeysRef.current = new Set(); // clear stale keys
+    // Clean invite URL param from address bar
+    try { const u = new URL(window.location.href); u.searchParams.delete("room"); window.history.replaceState({}, "", u); } catch(e){}
+    const gs = initGS(localName, "easy", localCol);
+    gs.multiMode = mode;
+    gs.fighters[1].name  = remoteName;
+    gs.fighters[1].color = remoteCol;
+    gs.fighters[1].glow  = remoteCol;
+    gs.resultsTriggered = false;
+    gsRef.current = gs;
+    beginRound(gs);
+    setUiPhase("game");
+  }
+
   // Game loop
   useEffect(() => {
     if (uiPhase !== "game") return;
@@ -1729,7 +1926,11 @@ export default function BeatMEE() {
       try {
       const gs = gsRef.current; const canvas = canvasRef.current; if (!canvas) return;
       const ctx = canvas.getContext("2d");
-      updateGS(gs, keysRef.current);
+      // ── Send local keys to peer if multiplayer ──
+      if (connRef.current?.open) {
+        connRef.current.send({ type: "keys", bits: encodeKeys(keysRef.current) });
+      }
+      updateGS(gs, keysRef.current, remoteKeysRef.current);
       const { fighters: [f1, f2], particles, announce, phase: gph, tick, timer, round, wins, cdVal, cdFrames, flashFrames } = gs;
       // ── Camera zoom transform (zoomed out) ──
       const zoom = gs.cameraZoom || 0.72;
@@ -1786,18 +1987,26 @@ export default function BeatMEE() {
       if (announce) drawAnnounce(ctx, announce.text, announce.sub, tick);
       if (gph === "results" && !gs.resultsTriggered) {
         gs.resultsTriggered = true;
-        const winner = gs.wins[0] >= WINS_NEEDED ? f1.name : "CPU";
+        const winner = gs.wins[0] >= WINS_NEEDED ? f1.name : f2.name;
         const diff2  = gs.difficulty;
         setResults({ winner, wins: [...gs.wins], playerName: f1.name, difficulty: diff2 });
         setWinStreak(prev => winner !== "CPU" ? prev + 1 : 0);
         setMatchHistory(prev => [...prev.slice(-4), { winner, diff: diff2, wins: [...gs.wins] }]);
+        // Disconnect peer gracefully after match
+        if (connRef.current) { try { connRef.current.close(); } catch(e){} connRef.current = null; }
         setUiPhase("results");
+        return; // Stop game loop
+      }
+      // ── Multiplayer disconnect detection ──
+      if (gsRef.current?.multiMode && connRef.current && !connRef.current.open && gsRef.current.phase === "fight") {
+        gsRef.current.announce = { text: "DISCONNECTED", sub: "Friend left the game", ttl: 9999 };
+        gsRef.current.phase = "ko";
       }
       rafRef.current = requestAnimationFrame(loop);
       } catch(e) { console.error("Game loop error:", e); rafRef.current = requestAnimationFrame(loop); }
     }
     rafRef.current = requestAnimationFrame(loop);
-    return () => { cancelAnimationFrame(rafRef.current); window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); };
+    return () => { cancelAnimationFrame(rafRef.current); window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); remoteKeysRef.current = new Set(); };
   }, [uiPhase]);
 
   function handleStart() {
@@ -1963,29 +2172,171 @@ export default function BeatMEE() {
               </div>
             </div>
 
-            {/* FIGHT BUTTON */}
-            <button
-              style={{
-                width:"100%", maxWidth:400, boxSizing:"border-box",
-                padding:"13px 0",
-                background:"rgba(255,20,10,0.14)", border:"2px solid #ff3322",
-                color:"#ff6655", fontSize:"clamp(11px,3.5vw,15px)",
-                fontFamily:F, fontWeight:"bold", letterSpacing:"clamp(3px,1.5vw,7px)",
-                cursor:"pointer", textTransform:"uppercase",
-                boxShadow:"0 0 20px rgba(255,20,10,0.32)",
-                textShadow:"0 0 8px #ff2200",
-                outline:"none", borderRadius:4, transition:"all 0.15s",
-              }}
-              onMouseOver={e => { e.currentTarget.style.background="rgba(255,20,10,0.26)"; e.currentTarget.style.boxShadow="0 0 40px rgba(255,20,10,0.6)"; }}
-              onMouseOut={e  => { e.currentTarget.style.background="rgba(255,20,10,0.14)"; e.currentTarget.style.boxShadow="0 0 20px rgba(255,20,10,0.32)"; }}
-              onClick={handleStart}
-            >▶ FIGHT !</button>
+            {/* BUTTONS ROW */}
+            <div style={{ width:"100%", maxWidth:400, boxSizing:"border-box", display:"flex", gap:8 }}>
+              {/* FIGHT BUTTON */}
+              <button
+                style={{
+                  flex:1, padding:"13px 0",
+                  background:"rgba(255,20,10,0.14)", border:"2px solid #ff3322",
+                  color:"#ff6655", fontSize:"clamp(10px,3vw,14px)",
+                  fontFamily:F, fontWeight:"bold", letterSpacing:"clamp(2px,1vw,5px)",
+                  cursor:"pointer", textTransform:"uppercase",
+                  boxShadow:"0 0 20px rgba(255,20,10,0.32)",
+                  textShadow:"0 0 8px #ff2200",
+                  outline:"none", borderRadius:4, transition:"all 0.15s",
+                }}
+                onMouseOver={e => { e.currentTarget.style.background="rgba(255,20,10,0.26)"; e.currentTarget.style.boxShadow="0 0 40px rgba(255,20,10,0.6)"; }}
+                onMouseOut={e  => { e.currentTarget.style.background="rgba(255,20,10,0.14)"; e.currentTarget.style.boxShadow="0 0 20px rgba(255,20,10,0.32)"; }}
+                onClick={handleStart}
+              >▶ VS CPU</button>
+              {/* INVITE FRIEND */}
+              <button
+                style={{
+                  flex:1, padding:"13px 0",
+                  background:"rgba(0,200,100,0.10)", border:"2px solid #00cc66",
+                  color:"#00ff88", fontSize:"clamp(10px,3vw,14px)",
+                  fontFamily:F, fontWeight:"bold", letterSpacing:"clamp(1px,0.8vw,3px)",
+                  cursor:"pointer", textTransform:"uppercase",
+                  boxShadow:"0 0 16px rgba(0,200,100,0.25)",
+                  textShadow:"0 0 8px #00ff88",
+                  outline:"none", borderRadius:4, transition:"all 0.15s",
+                }}
+                onMouseOver={e => { e.currentTarget.style.background="rgba(0,200,100,0.2)"; e.currentTarget.style.boxShadow="0 0 30px rgba(0,200,100,0.5)"; }}
+                onMouseOut={e  => { e.currentTarget.style.background="rgba(0,200,100,0.10)"; e.currentTarget.style.boxShadow="0 0 16px rgba(0,200,100,0.25)"; }}
+                onClick={handleHostInvite}
+              >👥 INVITE</button>
+            </div>
 
             {/* Controls hint */}
             <div style={{ width:"100%", maxWidth:400, fontSize:"clamp(6px,1.5vw,8px)", color:"#1a2233", letterSpacing:1.5, lineHeight:1.9, textAlign:"center" }}>
-              A PUNCH · S DASH · F HEAVY KICK · D SPECIAL · ↑+D SUPER · T TAUNT
+              A PUNCH · S DASH · F BLITZ · D SPECIAL · ↑+D SUPER · T TAUNT
             </div>
 
+          </div>
+        )}
+
+        {/* ─────────── MULTIPLAYER: HOST INVITE ─────────── */}
+        {(uiPhase === "mp_invite" || uiPhase === "mp_expired") && (
+          <div style={overlay}>
+            <div style={{ fontSize:"clamp(18px,6vw,36px)", fontWeight:"bold", color:"#00ff88",
+              letterSpacing:6, textShadow:"0 0 20px #00ff88, 0 0 50px #00cc66", textAlign:"center" }}>
+              INVITE FRIEND
+            </div>
+            {uiPhase === "mp_invite" && (
+              <>
+                <div style={{ color:"#aaa", fontSize:"clamp(8px,2vw,11px)", letterSpacing:2, textAlign:"center" }}>
+                  Share this link — expires in:
+                </div>
+                {/* Timer ring */}
+                <div style={{ position:"relative", width:80, height:80, margin:"0 auto" }}>
+                  <svg width="80" height="80" style={{ transform:"rotate(-90deg)" }}>
+                    <circle cx="40" cy="40" r="34" fill="none" stroke="#1a3322" strokeWidth="6"/>
+                    <circle cx="40" cy="40" r="34" fill="none"
+                      stroke={inviteTimer > 15 ? "#00ff88" : inviteTimer > 5 ? "#ffaa00" : "#ff3322"}
+                      strokeWidth="6" strokeLinecap="round"
+                      strokeDasharray={`${2*Math.PI*34}`}
+                      strokeDashoffset={`${2*Math.PI*34*(1-inviteTimer/60)}`}
+                      style={{ transition:"stroke-dashoffset 1s linear, stroke 0.3s" }}
+                    />
+                  </svg>
+                  <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
+                    color: inviteTimer > 15 ? "#00ff88" : inviteTimer > 5 ? "#ffaa00" : "#ff3322",
+                    fontWeight:"bold", fontSize:22, fontFamily:F }}>
+                    {inviteTimer}
+                  </div>
+                </div>
+                {/* Copyable link */}
+                <div style={{ width:"100%", maxWidth:400, boxSizing:"border-box" }}>
+                  <div style={{ background:"rgba(0,255,136,0.06)", border:"1px solid #00ff8844",
+                    borderRadius:6, padding:"10px 12px", wordBreak:"break-all",
+                    color:"#00ff88", fontSize:"clamp(7px,1.8vw,10px)", fontFamily:F, letterSpacing:1 }}>
+                    {window.location.origin + window.location.pathname + "?room=" + roomId}
+                  </div>
+                  <button
+                    style={{ marginTop:6, width:"100%", padding:"10px 0",
+                      background:"rgba(0,200,100,0.14)", border:"1px solid #00cc66",
+                      color:"#00ff88", fontSize:11, fontFamily:F, letterSpacing:4,
+                      cursor:"pointer", borderRadius:4, outline:"none" }}
+                    onClick={() => navigator.clipboard?.writeText(
+                      window.location.origin + window.location.pathname + "?room=" + roomId
+                    ).then(() => setMpStatus("✅ Copied!")).catch(()=>{})}
+                  >📋 COPY LINK</button>
+                </div>
+              </>
+            )}
+            {/* Status */}
+            <div style={{ color: mpStatus.startsWith("🟢") ? "#00ff88" : mpStatus.startsWith("❌") ? "#ff4444" : "#ffdd00",
+              fontSize:"clamp(9px,2.5vw,13px)", letterSpacing:2, textAlign:"center", minHeight:20 }}>
+              {mpStatus}
+            </div>
+            <button
+              style={{ padding:"10px 32px", background:"transparent", border:"1px solid #334",
+                color:"#556", fontFamily:F, fontSize:10, letterSpacing:4, cursor:"pointer", borderRadius:4 }}
+              onClick={() => {
+                if (inviteTimerRef.current) { clearInterval(inviteTimerRef.current); inviteTimerRef.current = null; }
+                try{peerRef.current?.destroy();}catch(e){}
+                setUiPhase("enter_name"); setMultiMode(null); setMpStatus(""); setInviteTimer(60);
+              }}
+            >← BACK</button>
+          </div>
+        )}
+
+        {/* ─────────── MULTIPLAYER: GUEST JOIN ─────────── */}
+        {uiPhase === "mp_join" && (
+          <div style={overlay}>
+            <div style={{ fontSize:"clamp(18px,6vw,36px)", fontWeight:"bold", color:"#00ff88",
+              letterSpacing:6, textShadow:"0 0 20px #00ff88, 0 0 50px #00cc66", textAlign:"center" }}>
+              JOIN GAME
+            </div>
+            <div style={{ color:"#aaa", fontSize:"clamp(8px,2vw,11px)", letterSpacing:2, textAlign:"center" }}>
+              You were invited to fight!
+            </div>
+            {/* Name input */}
+            <div style={{ width:"100%", maxWidth:400, boxSizing:"border-box" }}>
+              <div style={{ fontSize:"clamp(7px,1.8vw,9px)", color:"#334455", letterSpacing:3,
+                marginBottom:4, textAlign:"center" }}>YOUR FIGHTER NAME</div>
+              <input
+                type="text" maxLength={12} placeholder="ENTER NAME"
+                value={playerName}
+                onChange={e => { setPlayerName(e.target.value.toUpperCase()); setNameError(""); }}
+                style={{ width:"100%", boxSizing:"border-box", padding:"10px 14px",
+                  background:"rgba(0,255,136,0.06)", border:"1px solid #00ff8866",
+                  color:"#00ff88", fontFamily:F, fontSize:"clamp(11px,3vw,15px)",
+                  letterSpacing:4, outline:"none", borderRadius:4, textAlign:"center",
+                  textTransform:"uppercase" }}
+              />
+              {nameError && <div style={{ color:"#ff4444", fontSize:10, textAlign:"center", marginTop:4 }}>{nameError}</div>}
+            </div>
+            <button
+              style={{ width:"100%", maxWidth:400, padding:"13px 0",
+                background:"rgba(0,200,100,0.14)", border:"2px solid #00cc66",
+                color:"#00ff88", fontSize:"clamp(11px,3.5vw,15px)",
+                fontFamily:F, fontWeight:"bold", letterSpacing:"clamp(3px,1.5vw,7px)",
+                cursor:"pointer", textTransform:"uppercase",
+                boxShadow:"0 0 20px rgba(0,200,100,0.32)",
+                outline:"none", borderRadius:4, transition:"all 0.15s" }}
+              onClick={handleGuestJoin}
+            >⚡ CONNECT & FIGHT</button>
+            {/* Status */}
+            <div style={{ color: mpStatus.startsWith("🟢") ? "#00ff88" : mpStatus.startsWith("❌") ? "#ff4444" : "#ffdd00",
+              fontSize:"clamp(9px,2.5vw,13px)", letterSpacing:2, textAlign:"center", minHeight:20 }}>
+              {mpStatus}
+            </div>
+            <button
+              style={{ padding:"10px 32px", background:"transparent", border:"1px solid #334",
+                color:"#556", fontFamily:F, fontSize:10, letterSpacing:4, cursor:"pointer", borderRadius:4 }}
+              onClick={() => {
+                try { peerRef.current?.destroy(); peerRef.current = null; } catch(e){}
+                connRef.current = null;
+                remoteKeysRef.current = new Set();
+                // Remove room param from URL
+                const url = new URL(window.location.href);
+                url.searchParams.delete("room");
+                window.history.replaceState({}, "", url);
+                setUiPhase("enter_name"); setMultiMode(null); setMpStatus(""); setRoomId("");
+              }}
+            >← BACK</button>
           </div>
         )}
 
