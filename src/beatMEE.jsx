@@ -1769,7 +1769,16 @@ export default function BeatMEE() {
 
     const initPeer = () => {
       try { if (peerRef.current) peerRef.current.destroy(); } catch(e){}
-      const peer = new window.Peer(id, { debug: 0 });
+      const peer = new window.Peer(id, {
+        debug: 0,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun.cloudflare.com:3478" },
+          ]
+        }
+      });
       peerRef.current = peer;
 
       // Wait for peer to be registered on PeerJS server before showing link
@@ -1777,7 +1786,13 @@ export default function BeatMEE() {
       peer.on("open", (assignedId) => {
         // Update roomId in case PeerJS assigned a different ID
         setRoomId(assignedId);
-        setMpStatus("✅ Room ready — share the link below!");
+        setMpStatus("⏳ Finalising room...");
+
+        // Extra 1.5s propagation delay — PeerJS server needs time to
+        // make the ID discoverable to other peers even after "open" fires
+        setTimeout(() => {
+          setMpStatus("✅ Room ready — share the link below!");
+        }, 1500);
 
         // Start countdown ONLY after peer is live
         let countdown = 60;
@@ -1848,24 +1863,34 @@ export default function BeatMEE() {
     setNameError("");
     setMpStatus("⏳ Loading connection library...");
 
-    const initGuestPeer = () => {
+    const initGuestPeer = (attempt = 1) => {
+      const maxAttempts = 5;
       try { if (peerRef.current) peerRef.current.destroy(); } catch(e){}
-      const peer = new window.Peer(undefined, { debug: 0 });
+
+      // Use explicit STUN servers for better NAT traversal
+      const peer = new window.Peer(undefined, {
+        debug: 0,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun.cloudflare.com:3478" },
+          ]
+        }
+      });
       peerRef.current = peer;
 
       peer.on("open", () => {
-        setMpStatus("⏳ Connecting to room...");
+        setMpStatus(`⏳ Connecting to room... (attempt ${attempt}/${maxAttempts})`);
         const conn = peer.connect(roomId);
         connRef.current = conn;
 
-        // Set up data handler immediately before open fires (fixes data race)
         conn.on("data", (data) => {
           if (data.type === "keys") {
             remoteKeysRef.current = decodeKeys(data.bits);
           }
           if (data.type === "ack") {
             setMpStatus("🟢 Connected! Sending name...");
-            // Now safe to send ready — host data handler is already attached
             conn.send({ type: "ready", name: name.toUpperCase(), color: playerColor2 });
           }
           if (data.type === "go") {
@@ -1890,9 +1915,15 @@ export default function BeatMEE() {
 
       peer.on("error", (err) => {
         if (err.type === "peer-unavailable") {
-          setMpStatus("❌ Room not found — the host may still be setting up, or the link expired. Try again in a few seconds.");
+          if (attempt < maxAttempts) {
+            const wait = attempt * 2; // 2s, 4s, 6s, 8s back-off
+            setMpStatus(`⏳ Host not ready yet — retrying in ${wait}s... (${attempt}/${maxAttempts})`);
+            setTimeout(() => initGuestPeer(attempt + 1), wait * 1000);
+          } else {
+            setMpStatus("❌ Could not find room after " + maxAttempts + " attempts. The link may have expired — ask the host to generate a new one.");
+          }
         } else if (err.type === "network" || err.type === "server-error") {
-          setMpStatus("❌ Connection failed. Check your internet and try again.");
+          setMpStatus("❌ Network error. Check your internet and try again.");
         } else {
           setMpStatus("❌ Error: " + err.type);
         }
