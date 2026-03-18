@@ -1763,30 +1763,37 @@ export default function BeatMEE() {
     const id = "beatmee-" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
     setRoomId(id);
     setMultiMode("host");
-    setMpStatus("Waiting for friend to join...");
+    setMpStatus("⏳ Registering room...");
     setInviteTimer(60);
     setUiPhase("mp_invite");
 
     const initPeer = () => {
-      // Destroy any existing peer first
       try { if (peerRef.current) peerRef.current.destroy(); } catch(e){}
       const peer = new window.Peer(id, { debug: 0 });
       peerRef.current = peer;
 
-      // Countdown timer — stored in ref so Back button can clear it
-      let countdown = 60;
-      if (inviteTimerRef.current) clearInterval(inviteTimerRef.current);
-      inviteTimerRef.current = setInterval(() => {
-        countdown--;
-        setInviteTimer(countdown);
-        if (countdown <= 0) {
-          clearInterval(inviteTimerRef.current);
-          inviteTimerRef.current = null;
-          try { peer.destroy(); } catch(e){}
-          setMpStatus("⏰ Link expired. Go back and try again.");
-          setUiPhase("mp_expired");
-        }
-      }, 1000);
+      // Wait for peer to be registered on PeerJS server before showing link
+      // "open" fires once the ID is live — ONLY then is it safe for guests to connect
+      peer.on("open", (assignedId) => {
+        // Update roomId in case PeerJS assigned a different ID
+        setRoomId(assignedId);
+        setMpStatus("✅ Room ready — share the link below!");
+
+        // Start countdown ONLY after peer is live
+        let countdown = 60;
+        if (inviteTimerRef.current) clearInterval(inviteTimerRef.current);
+        inviteTimerRef.current = setInterval(() => {
+          countdown--;
+          setInviteTimer(countdown);
+          if (countdown <= 0) {
+            clearInterval(inviteTimerRef.current);
+            inviteTimerRef.current = null;
+            try { peer.destroy(); } catch(e){}
+            setMpStatus("⏰ Link expired. Go back and try again.");
+            setUiPhase("mp_expired");
+          }
+        }, 1000);
+      });
 
       peer.on("connection", (conn) => {
         // Stop the expiry timer as soon as someone connects
@@ -1839,7 +1846,7 @@ export default function BeatMEE() {
     const name = playerName.trim();
     if (!name) { setNameError("Enter your name first!"); return; }
     setNameError("");
-    setMpStatus("Connecting to room...");
+    setMpStatus("⏳ Loading connection library...");
 
     const initGuestPeer = () => {
       try { if (peerRef.current) peerRef.current.destroy(); } catch(e){}
@@ -1847,7 +1854,7 @@ export default function BeatMEE() {
       peerRef.current = peer;
 
       peer.on("open", () => {
-        // No reliable:true — deprecated in PeerJS v1.5
+        setMpStatus("⏳ Connecting to room...");
         const conn = peer.connect(roomId);
         connRef.current = conn;
 
@@ -1881,7 +1888,15 @@ export default function BeatMEE() {
         }, 18000);
       });
 
-      peer.on("error", (err) => setMpStatus("❌ Peer error: " + err.type));
+      peer.on("error", (err) => {
+        if (err.type === "peer-unavailable") {
+          setMpStatus("❌ Room not found — the host may still be setting up, or the link expired. Try again in a few seconds.");
+        } else if (err.type === "network" || err.type === "server-error") {
+          setMpStatus("❌ Connection failed. Check your internet and try again.");
+        } else {
+          setMpStatus("❌ Error: " + err.type);
+        }
+      });
     };
 
     if (window.Peer) { initGuestPeer(); }
@@ -2246,22 +2261,30 @@ export default function BeatMEE() {
                     {inviteTimer}
                   </div>
                 </div>
-                {/* Copyable link */}
+                {/* Copyable link — only shown when peer is live */}
                 <div style={{ width:"100%", maxWidth:400, boxSizing:"border-box" }}>
-                  <div style={{ background:"rgba(0,255,136,0.06)", border:"1px solid #00ff8844",
-                    borderRadius:6, padding:"10px 12px", wordBreak:"break-all",
-                    color:"#00ff88", fontSize:"clamp(7px,1.8vw,10px)", fontFamily:F, letterSpacing:1 }}>
-                    {window.location.origin + window.location.pathname + "?room=" + roomId}
-                  </div>
-                  <button
-                    style={{ marginTop:6, width:"100%", padding:"10px 0",
-                      background:"rgba(0,200,100,0.14)", border:"1px solid #00cc66",
-                      color:"#00ff88", fontSize:11, fontFamily:F, letterSpacing:4,
-                      cursor:"pointer", borderRadius:4, outline:"none" }}
-                    onClick={() => navigator.clipboard?.writeText(
-                      window.location.origin + window.location.pathname + "?room=" + roomId
-                    ).then(() => setMpStatus("✅ Copied!")).catch(()=>{})}
-                  >📋 COPY LINK</button>
+                  {mpStatus.startsWith("✅") || mpStatus.startsWith("🟢") ? (
+                    <>
+                      <div style={{ background:"rgba(0,255,136,0.06)", border:"1px solid #00ff8844",
+                        borderRadius:6, padding:"10px 12px", wordBreak:"break-all",
+                        color:"#00ff88", fontSize:"clamp(7px,1.8vw,10px)", fontFamily:F, letterSpacing:1 }}>
+                        {window.location.origin + window.location.pathname + "?room=" + roomId}
+                      </div>
+                      <button
+                        style={{ marginTop:6, width:"100%", padding:"10px 0",
+                          background:"rgba(0,200,100,0.14)", border:"1px solid #00cc66",
+                          color:"#00ff88", fontSize:11, fontFamily:F, letterSpacing:4,
+                          cursor:"pointer", borderRadius:4, outline:"none" }}
+                        onClick={() => navigator.clipboard?.writeText(
+                          window.location.origin + window.location.pathname + "?room=" + roomId
+                        ).then(() => setMpStatus("✅ Copied! Share fast — " + inviteTimer + "s left")).catch(()=>{})}
+                      >📋 COPY LINK</button>
+                    </>
+                  ) : (
+                    <div style={{ textAlign:"center", color:"#888", fontSize:"clamp(9px,2vw,12px)", letterSpacing:2, padding:"12px 0" }}>
+                      ⏳ Setting up room...
+                    </div>
+                  )}
                 </div>
               </>
             )}
