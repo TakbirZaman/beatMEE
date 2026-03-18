@@ -1760,7 +1760,7 @@ export default function BeatMEE() {
     const name = playerName.trim();
     if (!name) { setNameError("Enter your fighter name first!"); return; }
     setNameError("");
-    const id = "beatmee-" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    const id = "bm" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
     setRoomId(id);
     setMultiMode("host");
     setMpStatus("⏳ Registering room...");
@@ -1770,12 +1770,16 @@ export default function BeatMEE() {
     const initPeer = () => {
       try { if (peerRef.current) peerRef.current.destroy(); } catch(e){}
       const peer = new window.Peer(id, {
+        host: "0.peerjs.com",
+        port: 443,
+        path: "/",
+        secure: true,
         debug: 0,
         config: {
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun.cloudflare.com:3478" },
+            { urls: "stun:global.stun.twilio.com:3478" },
           ]
         }
       });
@@ -1792,7 +1796,7 @@ export default function BeatMEE() {
         // make the ID discoverable to other peers even after "open" fires
         setTimeout(() => {
           setMpStatus("✅ Room ready — share the link below!");
-        }, 1500);
+        }, 800);
 
         // Start countdown ONLY after peer is live
         let countdown = 60;
@@ -1864,65 +1868,76 @@ export default function BeatMEE() {
     setMpStatus("⏳ Loading connection library...");
 
     const initGuestPeer = (attempt = 1) => {
-      const maxAttempts = 5;
       try { if (peerRef.current) peerRef.current.destroy(); } catch(e){}
 
-      // Use explicit STUN servers for better NAT traversal
       const peer = new window.Peer(undefined, {
+        host: "0.peerjs.com",
+        port: 443,
+        path: "/",
+        secure: true,
         debug: 0,
         config: {
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun.cloudflare.com:3478" },
+            { urls: "stun:global.stun.twilio.com:3478" },
           ]
         }
       });
       peerRef.current = peer;
 
       peer.on("open", () => {
-        setMpStatus(`⏳ Connecting to room... (attempt ${attempt}/${maxAttempts})`);
-        const conn = peer.connect(roomId);
-        connRef.current = conn;
-
-        conn.on("data", (data) => {
-          if (data.type === "keys") {
-            remoteKeysRef.current = decodeKeys(data.bits);
-          }
-          if (data.type === "ack") {
-            setMpStatus("🟢 Connected! Sending name...");
-            conn.send({ type: "ready", name: name.toUpperCase(), color: playerColor2 });
-          }
-          if (data.type === "go") {
-            const hName  = (data.hostName  || "HOST").toUpperCase().slice(0,12);
-            const hColor = data.hostColor  || "#00e5ff";
-            setMpStatus("🟢 Starting fight!");
-            startMultiGame("guest", hName, name.toUpperCase(), hColor, playerColor2, conn);
-          }
-        });
-
-        conn.on("open", () => {
-          setMpStatus("🟢 Reached host — waiting for ack...");
-        });
-        conn.on("close", () => setMpStatus("❌ Host disconnected."));
-        conn.on("error", () => setMpStatus("❌ Connection error."));
-
-        // 18s connection timeout
-        setTimeout(() => {
-          if (!connRef.current?.open) setMpStatus("❌ Could not connect. Link may be expired.");
-        }, 18000);
+        setMpStatus("⏳ Connecting to room...");
+        tryConnect(1);
       });
+
+      // Retry connection on peer-unavailable without recreating the whole peer
+      const tryConnect = (tryNum) => {
+        if (tryNum > 6) {
+          setMpStatus("❌ Could not find room. The link may have expired — ask the host to send a new one.");
+          return;
+        }
+        const delay = tryNum === 1 ? 0 : tryNum * 1500;
+        if (tryNum > 1) setMpStatus(`⏳ Retrying... (${tryNum}/6)`);
+        setTimeout(() => {
+          try {
+            const conn = peer.connect(roomId);
+            connRef.current = conn;
+            let settled = false;
+
+            conn.on("data", (data) => {
+              if (data.type === "keys") remoteKeysRef.current = decodeKeys(data.bits);
+              if (data.type === "ack") {
+                settled = true;
+                setMpStatus("🟢 Connected! Sending name...");
+                conn.send({ type: "ready", name: name.toUpperCase(), color: playerColor2 });
+              }
+              if (data.type === "go") {
+                const hName  = (data.hostName || "HOST").toUpperCase().slice(0,12);
+                const hColor = data.hostColor || "#00e5ff";
+                setMpStatus("🟢 Starting fight!");
+                startMultiGame("guest", hName, name.toUpperCase(), hColor, playerColor2, conn);
+              }
+            });
+            conn.on("open", () => setMpStatus("🟢 Reached host — waiting..."));
+            conn.on("close", () => { if (!settled) tryConnect(tryNum + 1); });
+            conn.on("error", (e) => {
+              if (!settled) {
+                setMpStatus(`⏳ Retrying... (${tryNum}/6)`);
+                tryConnect(tryNum + 1);
+              }
+            });
+
+            // If not opened in 5s, retry
+            setTimeout(() => { if (!settled && !conn.open) tryConnect(tryNum + 1); }, 5000);
+          } catch(e) { tryConnect(tryNum + 1); }
+        }, delay);
+      };
 
       peer.on("error", (err) => {
         if (err.type === "peer-unavailable") {
-          if (attempt < maxAttempts) {
-            const wait = attempt * 2; // 2s, 4s, 6s, 8s back-off
-            setMpStatus(`⏳ Host not ready yet — retrying in ${wait}s... (${attempt}/${maxAttempts})`);
-            setTimeout(() => initGuestPeer(attempt + 1), wait * 1000);
-          } else {
-            setMpStatus("❌ Could not find room after " + maxAttempts + " attempts. The link may have expired — ask the host to generate a new one.");
-          }
-        } else if (err.type === "network" || err.type === "server-error") {
+          tryConnect(2); // first attempt already ran, start at 2
+        } else if (err.type === "network" || err.type === "server-error" || err.type === "unavailable-id") {
           setMpStatus("❌ Network error. Check your internet and try again.");
         } else {
           setMpStatus("❌ Error: " + err.type);
